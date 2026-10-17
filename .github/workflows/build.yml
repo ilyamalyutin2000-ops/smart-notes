@@ -30,6 +30,8 @@ jobs:
         run: |
           export APP_ANDROID_ACCEPT_SDK_LICENSE=1
           export BUILDOZER_WARN_ON_ROOT=0
+          # Принудительно принимаем лицензии для SDK
+          yes | $HOME/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --licenses || true
           yes | buildozer android debug
   
 
