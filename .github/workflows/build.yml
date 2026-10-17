@@ -12,25 +12,26 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Устанавливаем Java и зависимости напрямую
-      - name: Set up system dependencies
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'  # Фиксируем стабильную версию
+
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev
 
-      # Устанавливаем Buildozer через pip
       - name: Install Buildozer
         run: |
-          pip3 install --user --upgrade buildozer Cython virtualenv
+          pip install --upgrade buildozer Cython virtualenv
 
-      # Запускаем сборку (с автосогласием лицензий)
       - name: Build with Buildozer
         run: |
-          export PATH=$PATH:$HOME/.local/bin
           export APP_ANDROID_ACCEPT_SDK_LICENSE=1
+          export BUILDOZER_WARN_ON_ROOT=0
           buildozer android debug
 
-      # Загружаем готовый APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
