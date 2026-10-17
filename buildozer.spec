@@ -5,7 +5,7 @@ package.domain = org.smartnotes
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 0.1
-requirements = python3==3.10.13,kivy==2.3.0,requests
+requirements = hostpython3==3.10.13,python3==3.10.13,kivy==2.3.0,requests
 orientation = portrait
 fullscreen = 0
 
