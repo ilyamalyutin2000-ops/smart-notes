@@ -16,3 +16,4 @@ android.ndk = 25b
 android.archs = arm64-v8a, armeabi-v7a
 android.permissions = INTERNET
 android.allow_backup = True
+android.accept_sdk_license = True
