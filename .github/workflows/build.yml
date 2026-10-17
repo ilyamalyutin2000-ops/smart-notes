@@ -27,7 +27,7 @@ jobs:
           pip install --upgrade buildozer Cython virtualenv
 
       - name: Build with Buildozer
-        run: |
+        run: yes | buildozer android debug
           export APP_ANDROID_ACCEPT_SDK_LICENSE=1
           export BUILDOZER_WARN_ON_ROOT=0
           buildozer android debug
