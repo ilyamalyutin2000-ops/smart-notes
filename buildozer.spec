@@ -7,13 +7,13 @@ source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
 # ЖЕСТКО ФИКСИРУЕМ PYTHON 3.9 (спасает от багов с jnius и long)
-# Добавлен plyer для вызова системного окна выбора файлов
-requirements = python3==3.9.16,hostpython3==3.9.16,kivy==2.3.0,requests,jnius,plyer
+# Убрали plyer, оставили только рабочие библиотеки
+requirements = python3==3.9.16,hostpython3==3.9.16,kivy==2.3.0,requests,jnius
 
 orientation = portrait
 fullscreen = 0
 
-# РАЗРЕШЕНИЯ: Интернет + Доступ к файлам (обязательно для plyer)
+# РАЗРЕШЕНИЯ: Интернет + Доступ к файлам (для чтения фото из памяти)
 android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
 
 android.api = 33
