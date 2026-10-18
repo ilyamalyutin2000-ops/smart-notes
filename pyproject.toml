@@ -2,12 +2,26 @@
 project_name = "smartnotes"
 bundle = "org.smartnotes"
 version = "0.1"
+license.file = "LICENSE"
+url = "https://github.com/ilyamalyutin2000-ops/smart-notes"
 
 [tool.briefcase.app.smartnotes]
 formal_name = "Умный конспект"
 description = "Умный конспект"
-license = "MIT"
-sources = ["."]
-requires = ["kivy", "requests"]
+long_description = "Приложение для распознавания конспектов и чата по ним."
+sources = ["src"]
+test_sources = []
+requires = [
+    "kivy",
+    "requests",
+]
+icon = "src/icon.png"
+splash = "src/splash.png"
+entry_point = "app"
 
 [tool.briefcase.app.smartnotes.android]
+requires = [
+    "kivy",
+    "requests",
+    "pyjnius",
+]
