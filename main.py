@@ -382,7 +382,7 @@ def clean_text(raw_text):
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-        payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": "Убери символы (*, #, `, _), исправь ошибки. Только чистый текст на русском."}, {"role": "user", "content": raw_text}], "temperature": 0.3}
+        payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": "Убери символы (*, #, `, _), исправь ошибки. Только чистый текст на русском."}, {"role": "user", "content": raw_text}], "temperature": 0.3}
         resp = requests.post(url, json=payload, headers=headers, timeout=60)
         if resp.status_code == 200: return resp.json()["choices"][0]["message"]["content"].strip()
     except Exception as e: print("Groq clean error:", e)
