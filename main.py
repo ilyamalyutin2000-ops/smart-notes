@@ -28,7 +28,7 @@ Window.softinput_mode = 'below_target'
 Window.clearcolor = get_color_from_hex('#F4F6F9')
 
 # ============================================================
-# НАСТРОЙКИ
+# НАСТРОЙКИ (Ключи)
 # ============================================================
 OCR_API_KEY = "K86772432188957"
 GROQ_API_KEY = "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"
@@ -49,7 +49,7 @@ def get_data_path(folder_name):
 NOTES_FOLDER = get_data_path("notes")
 
 # ============================================================
-# КАСТОМНЫЕ КНОПКИ
+# КАСТОМНЫЕ КНОПКИ (Смена цвета и текста)
 # ============================================================
 class TabButton(Button):
     def __init__(self, bg_color_normal=(0.4, 0.4, 0.45, 1), bg_color_active=(0.15, 0.45, 0.85, 1), **kwargs):
@@ -60,9 +60,11 @@ class TabButton(Button):
         self.bg_color_normal = bg_color_normal
         self.bg_color_active = bg_color_active
         self.current_color = bg_color_normal
-        self.color_normal = (0.9, 0.9, 0.9, 1)
-        self.color_active = (1, 1, 1, 1)
+        
+        self.color_normal = (0.9, 0.9, 0.9, 1) 
+        self.color_active = (1, 1, 1, 1)       
         self.color = self.color_normal
+        
         self.bind(pos=self.update_canvas, size=self.update_canvas)
 
     def update_canvas(self, *args):
