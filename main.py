@@ -13,15 +13,13 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
+from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
 from kivy.utils import platform, get_color_from_hex
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
 import requests
-
-# Плагин для вызова системного окна выбора файлов
-from plyer import filechooser
 
 # ============================================================
 # ИСПРАВЛЕНИЕ КЛАВИАТУРЫ И ФОНА
@@ -63,9 +61,9 @@ class TabButton(Button):
         self.bg_color_active = bg_color_active
         self.current_color = bg_color_normal
         
-        # Цвета текста
-        self.color_normal = (0.9, 0.9, 0.9, 1) # Светло-серый для неактивных
-        self.color_active = (1, 1, 1, 1)       # Белый для активных
+        # Цвета текста: белый для активных, светло-серый для неактивных
+        self.color_normal = (0.9, 0.9, 0.9, 1) 
+        self.color_active = (1, 1, 1, 1)       
         self.color = self.color_normal
         
         self.bind(pos=self.update_canvas, size=self.update_canvas)
@@ -315,45 +313,29 @@ class MainScreen(Screen):
         self.ids.btn_sub_text.set_active(name == 'text')
 
     # ========================================================
-    # ОТКРЫТИЕ ФАЙЛА (Через Plyer)
+    # ОТКРЫТИЕ ФАЙЛА (Встроенный проводник Kivy)
     # ========================================================
     def open_file_chooser(self):
-        self.ids.photo_status.text = 'Открытие меню...'
-        
-        try:
-            # Вызываем системный проводник
-            filechooser.open_file(on_selection=self.handle_file_selection)
-        except Exception as e:
-            # Если плагин не сработал (например, на ПК), открываем стандартный Popup
-            self.ids.photo_status.text = f'Системный выбор недоступен ({e}). Открываем встроенный.'
-            self._open_fallback_file_chooser()
-
-    def handle_file_selection(self, selection):
-        if selection:
-            path = selection[0]
-            # Возвращаемся в главный поток
-            Clock.schedule_once(lambda dt: self.process_photo(path), 0)
-        else:
-            self.ids.photo_status.text = 'Файл не выбран.'
-
-    def _open_fallback_file_chooser(self):
-        # Резервный вариант, если системное окно не открылось
         content = BoxLayout(orientation='vertical')
-        from kivy.uix.filechooser import FileChooserListView
-        filechooser = FileChooserListView(path=os.path.expanduser("~"))
+        # Путь по умолчанию для Android (папка Загрузки)
+        filechooser = FileChooserListView(path="/storage/emulated/0/Download")
         content.add_widget(filechooser)
+        
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
-        btn_cancel = Button(text='Отмена')
+        btn_cancel = Button(text='Отмена', background_color=(0.7, 0.7, 0.7, 1))
         btn_open = Button(text='Открыть', background_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
         content.add_widget(btn_box)
+        
         popup = Popup(title='Выберите файл', content=content, size_hint=(0.95, 0.95))
+        
         def cancel(*_): popup.dismiss()
         def open_file(*_):
             if filechooser.selection:
                 popup.dismiss()
                 self.process_photo(filechooser.selection[0])
+                
         btn_cancel.bind(on_release=cancel)
         btn_open.bind(on_release=open_file)
         popup.open()
