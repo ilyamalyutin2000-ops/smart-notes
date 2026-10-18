@@ -6,8 +6,8 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
-# ПРИНУДИТЕЛЬНАЯ ЗАГРУЗКА С GITHUB (обход ошибки с 'long')
-requirements = python3==3.9.16,hostpython3==3.9.16,kivy==https://github.com/kivy/kivy/archive/refs/tags/2.3.1.zip,jnius==https://github.com/kivy/pyjnius/archive/refs/tags/1.7.0.zip,requests
+# СТАВИМ ТОЛЬКО СТАНДАРТНЫЕ ПАКЕТЫ (без ссылок на GitHub)
+requirements = python3==3.9.16,hostpython3==3.9.16,kivy==2.3.0,requests,jnius
 
 orientation = portrait
 fullscreen = 0
