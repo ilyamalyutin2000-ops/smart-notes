@@ -6,8 +6,8 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 0.1
 
-# ЖЕСТКО ФИКСИРУЕМ PYTHON 3.10 (это спасает от ошибки BuildDependencyInstallError)
-requirements = python3==3.10.12,hostpython3==3.10.12,kivy,requests
+# ФИКСИРУЕМ PYTHON 3.9 (чтобы pyjnius не сломался)
+requirements = python3==3.9.16,hostpython3==3.9.16,kivy,requests
 
 orientation = portrait
 fullscreen = 0
@@ -18,6 +18,6 @@ android.ndk = 25b
 android.archs = arm64-v8a, armeabi-v7a
 android.accept_sdk_license = True
 
-# Отключаем проверку root (чтобы не было вопросов в GitHub Actions)
+# Отключаем проверку root
 warn_on_root = 0
 log_level = 2
