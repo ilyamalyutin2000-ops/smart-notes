@@ -17,11 +17,11 @@ jobs:
 
       - name: Build with Buildozer
         run: |
-          # Принимаем лицензии
+          # 1. Принимаем лицензии SDK (на всякий случай)
           yes | sdkmanager --licenses || true
           
-          
-          buildozer --no-interactive android debug
+          # 2. Принудительно отвечаем "y" на вопрос о root и запускаем сборку
+          yes | buildozer android debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
