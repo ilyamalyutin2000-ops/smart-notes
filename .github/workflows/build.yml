@@ -24,21 +24,16 @@ jobs:
           sudo apt-get install -y openjdk-17-jdk
 
       - name: Build APK
-        working-directory: ./
         run: |
-          ls -la  # Эта команда покажет список файлов, чтобы мы точно увидели, где лежит pyproject.toml
           briefcase package android --no-input
 
       - name: Find and Upload APK
         run: |
-          # Ищем APK файл во всей папке (Briefcase кладет его в разные места)
           APK_PATH=$(find . -name "*.apk" | head -n 1)
           if [ -z "$APK_PATH" ]; then
             echo "APK не найден!"
             exit 1
           fi
-          echo "Найден APK: $APK_PATH"
-          # Копируем его в корень для удобства
           cp "$APK_PATH" ./app-debug.apk
 
       - name: Upload APK
