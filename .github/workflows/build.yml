@@ -8,23 +8,19 @@ on:
 jobs:
   build-android:
     runs-on: ubuntu-latest
-    container:
-      image: kivy/buildozer:latest  # Используем официальный образ со всеми настройками
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Build with Buildozer
-        run: |
-          # 1. Принимаем лицензии SDK (на всякий случай)
-          yes | sdkmanager --licenses || true
-          
-          # 2. Принудительно отвечаем "y" на вопрос о root и запускаем сборку
-          yes | buildozer android debug
+        uses: ArtemSBulgakov/buildozer-action@v1
+        id: buildozer
+        with:
+          command: buildozer android debug
+          buildozer_version: stable
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: smart-notes-apk
-          path: bin/*.apk
+          path: ${{ steps.buildozer.outputs.filename }}
