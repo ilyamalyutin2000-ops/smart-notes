@@ -241,6 +241,7 @@ class MainScreen(Screen):
 
     def open_file_chooser(self):
         content = BoxLayout(orientation='vertical')
+        # В Android путь к загрузкам обычно такой:
         filechooser = FileChooserListView(path="/storage/emulated/0/Download", filters=['*.png', '*.jpg', '*.jpeg'])
         content.add_widget(filechooser)
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
