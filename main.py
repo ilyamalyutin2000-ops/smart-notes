@@ -80,8 +80,11 @@ KV = """
                 background_color: 0.8, 0.8, 0.8, 1
                 on_release: root.switch_tab('chat')
 
+        # Исправление верстки: ScreenManager должен занимать всё свободное место
         ScreenManager:
             id: content_manager
+            size_hint_y: 1
+            
             Screen:
                 name: 'new'
                 BoxLayout:
@@ -100,8 +103,11 @@ KV = """
                             text: 'Текст'
                             background_color: 0.8, 0.8, 0.8, 1
                             on_release: root.switch_subtab('text')
+                    
                     ScreenManager:
                         id: subtab_manager
+                        size_hint_y: 1
+                        
                         Screen:
                             name: 'photo'
                             BoxLayout:
@@ -166,6 +172,7 @@ KV = """
                                     height: dp(55)
                                     background_color: 0.49, 0.35, 0.83, 1
                                     on_release: root.process_manual_text()
+            
             Screen:
                 name: 'history'
                 BoxLayout:
@@ -184,6 +191,7 @@ KV = """
                             size_hint_y: None
                             height: self.minimum_height
                             spacing: dp(8)
+            
             Screen:
                 name: 'chat'
                 BoxLayout:
@@ -241,7 +249,7 @@ class MainScreen(Screen):
 
     def open_file_chooser(self):
         content = BoxLayout(orientation='vertical')
-        # В Android путь к загрузкам обычно такой:
+        # Путь по умолчанию для Android (может потребоваться разрешение)
         filechooser = FileChooserListView(path="/storage/emulated/0/Download", filters=['*.png', '*.jpg', '*.jpeg'])
         content.add_widget(filechooser)
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
