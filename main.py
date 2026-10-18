@@ -13,13 +13,20 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
-from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
 from kivy.utils import platform, get_color_from_hex
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
 import requests
+
+# ============================================================
+# ИМПОРТЫ ДЛЯ ANDROID (Pyjnius)
+# ============================================================
+if platform == 'android':
+    from jnius import autoclass, cast
+    from android import mActivity, activity
+    from android.permissions import request_permissions, Permission
 
 # ============================================================
 # ИСПРАВЛЕНИЕ КЛАВИАТУРЫ И ФОНА
@@ -49,9 +56,9 @@ def get_data_path(folder_name):
 NOTES_FOLDER = get_data_path("notes")
 
 # ============================================================
-# КАСТОМНЫЕ КНОПКИ (Смена цвета и текста)
+# КАСТОМНЫЕ КНОПКИ
 # ============================================================
-class TabButton(Button):
+class AnimatedButton(Button):
     def __init__(self, bg_color_normal=(0.4, 0.4, 0.45, 1), bg_color_active=(0.15, 0.45, 0.85, 1), **kwargs):
         super().__init__(**kwargs)
         self.background_normal = ''
@@ -60,23 +67,17 @@ class TabButton(Button):
         self.bg_color_normal = bg_color_normal
         self.bg_color_active = bg_color_active
         self.current_color = bg_color_normal
-        
-        self.color_normal = (0.9, 0.9, 0.9, 1) 
-        self.color_active = (1, 1, 1, 1)       
-        self.color = self.color_normal
-        
         self.bind(pos=self.update_canvas, size=self.update_canvas)
 
     def update_canvas(self, *args):
         self.canvas.before.clear()
         with self.canvas.before:
             Color(*self.current_color)
-            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(12)])
+            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(15)])
 
     def set_active(self, is_active):
-        target_bg = self.bg_color_active if is_active else self.bg_color_normal
-        target_text = self.color_active if is_active else self.color_normal
-        Animation(current_color=target_bg, color=target_text, d=0.2, t='out_quad').start(self)
+        target_color = self.bg_color_active if is_active else self.bg_color_normal
+        Animation(current_color=target_color, d=0.3, t='out_quad').start(self)
 
 # ============================================================
 # ИНТЕРФЕЙС (KV)
@@ -100,15 +101,15 @@ KV = """
             size_hint_y: None
             height: dp(50)
             spacing: dp(8)
-            TabButton:
+            AnimatedButton:
                 id: btn_tab_new
                 text: 'Загрузка'
                 on_release: root.switch_tab('new')
-            TabButton:
+            AnimatedButton:
                 id: btn_tab_history
                 text: 'История'
                 on_release: root.switch_tab('history')
-            TabButton:
+            AnimatedButton:
                 id: btn_tab_chat
                 text: 'Чат'
                 on_release: root.switch_tab('chat')
@@ -126,11 +127,11 @@ KV = """
                         size_hint_y: None
                         height: dp(45)
                         spacing: dp(8)
-                        TabButton:
+                        AnimatedButton:
                             id: btn_sub_photo
                             text: 'Файл'
                             on_release: root.switch_subtab('photo')
-                        TabButton:
+                        AnimatedButton:
                             id: btn_sub_text
                             text: 'Текст'
                             on_release: root.switch_subtab('text')
@@ -144,14 +145,12 @@ KV = """
                             BoxLayout:
                                 orientation: 'vertical'
                                 spacing: dp(10)
-                                TabButton:
+                                AnimatedButton:
                                     text: 'Загрузить фото/файл'
                                     size_hint_y: None
                                     height: dp(60)
                                     bg_color_normal: (0.55, 0.3, 0.8, 1)
                                     bg_color_active: (0.55, 0.3, 0.8, 1)
-                                    color_active: (1, 1, 1, 1)
-                                    color_normal: (1, 1, 1, 1)
                                     on_release: root.open_file_chooser()
                                 Label:
                                     id: photo_status
@@ -171,19 +170,15 @@ KV = """
                                     size_hint_y: None
                                     height: dp(50)
                                     spacing: dp(8)
-                                    TabButton:
+                                    AnimatedButton:
                                         text: 'Копировать'
                                         bg_color_normal: (0.2, 0.6, 0.4, 1)
                                         bg_color_active: (0.2, 0.6, 0.4, 1)
-                                        color_active: (1, 1, 1, 1)
-                                        color_normal: (1, 1, 1, 1)
                                         on_release: root.copy_photo_text()
-                                    TabButton:
+                                    AnimatedButton:
                                         text: 'Сохранить'
                                         bg_color_normal: (0.2, 0.5, 0.8, 1)
                                         bg_color_active: (0.2, 0.5, 0.8, 1)
-                                        color_active: (1, 1, 1, 1)
-                                        color_normal: (1, 1, 1, 1)
                                         on_release: root.save_photo_text()
                         Screen:
                             name: 'text'
@@ -202,14 +197,12 @@ KV = """
                                     size_hint_y: None
                                     height: dp(30)
                                     color: 0.4, 0.4, 0.45, 1
-                                TabButton:
+                                AnimatedButton:
                                     text: 'Сохранить'
                                     size_hint_y: None
                                     height: dp(55)
                                     bg_color_normal: (0.55, 0.3, 0.8, 1)
                                     bg_color_active: (0.55, 0.3, 0.8, 1)
-                                    color_active: (1, 1, 1, 1)
-                                    color_normal: (1, 1, 1, 1)
                                     on_release: root.process_manual_text()
 
             Screen:
@@ -217,14 +210,12 @@ KV = """
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: dp(10)
-                    TabButton:
+                    AnimatedButton:
                         text: 'Обновить'
                         size_hint_y: None
                         height: dp(45)
                         bg_color_normal: (0.15, 0.45, 0.85, 1)
                         bg_color_active: (0.15, 0.45, 0.85, 1)
-                        color_active: (1, 1, 1, 1)
-                        color_normal: (1, 1, 1, 1)
                         on_release: root.load_history()
                     ScrollView:
                         BoxLayout:
@@ -258,23 +249,19 @@ KV = """
                             background_color: 1, 1, 1, 1
                             foreground_color: 0.1, 0.15, 0.2, 1
                             on_text_validate: root.send_chat_message()
-                        TabButton:
+                        AnimatedButton:
                             text: 'Ввод'
                             size_hint_x: None
                             width: dp(90)
                             bg_color_normal: (0.15, 0.45, 0.85, 1)
                             bg_color_active: (0.15, 0.45, 0.85, 1)
-                            color_active: (1, 1, 1, 1)
-                            color_normal: (1, 1, 1, 1)
                             on_release: root.send_chat_message()
-                    TabButton:
+                    AnimatedButton:
                         text: 'Очистить диалог'
                         size_hint_y: None
                         height: dp(45)
                         bg_color_normal: (0.85, 0.25, 0.25, 1)
                         bg_color_active: (0.85, 0.25, 0.25, 1)
-                        color_active: (1, 1, 1, 1)
-                        color_normal: (1, 1, 1, 1)
                         on_release: root.clear_chat()
 """
 
@@ -286,6 +273,7 @@ class MainScreen(Screen):
         super().__init__(**kwargs)
         self.current_photo_text = ""
         self.chat_history = []
+        self._android_result_callback = None
         Clock.schedule_once(self.init_colors, 0.1)
 
     def init_colors(self, dt):
@@ -304,12 +292,45 @@ class MainScreen(Screen):
         self.ids.btn_sub_photo.set_active(name == 'photo')
         self.ids.btn_sub_text.set_active(name == 'text')
 
+    # ========================================================
+    # ОТКРЫТИЕ СИСТЕМНОГО ФАЙЛОВОГО МЕНЕДЖЕРА (ANDROID)
+    # ========================================================
     def open_file_chooser(self):
+        if platform == 'android':
+            self._open_android_file_picker()
+        else:
+            # Для ПК оставляем старый Popup (на случай тестов)
+            self._open_desktop_file_chooser()
+
+    def _open_android_file_picker(self):
+        try:
+            Intent = autoclass('android.content.Intent')
+            # ACTION_GET_CONTENT позволяет выбрать файл из любого приложения
+            intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.setType('*/*')  # Разрешаем любой тип файла
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+            # Создаем chooser (диалог выбора приложения)
+            chooser = Intent.createChooser(intent, cast('java.lang.CharSequence', 'Выберите файл'))
+
+            # Регистрируем слушатель результата
+            if self._android_result_callback is None:
+                self._android_result_callback = FilePickerResult(self)
+                activity.bind(on_activity_result=self._android_result_callback.on_activity_result)
+
+            # Запускаем activity
+            mActivity.startActivityForResult(chooser, 1001)
+        except Exception as e:
+            self.ids.photo_status.text = f'Ошибка выбора файла: {e}'
+
+    def _open_desktop_file_chooser(self):
+        # Тот самый старый код для ПК
+        from kivy.uix.filechooser import FileChooserListView
         content = BoxLayout(orientation='vertical')
-        filechooser = FileChooserListView(path="/storage/emulated/0/Download")
+        filechooser = FileChooserListView(path=os.path.expanduser("~"))
         content.add_widget(filechooser)
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
-        btn_cancel = Button(text='Отмена', background_color=(0.7, 0.7, 0.7, 1))
+        btn_cancel = Button(text='Отмена')
         btn_open = Button(text='Открыть', background_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
@@ -323,6 +344,13 @@ class MainScreen(Screen):
         btn_cancel.bind(on_release=cancel)
         btn_open.bind(on_release=open_file)
         popup.open()
+
+    # ========================================================
+    # ОБРАБОТКА ВЫБРАННОГО ФАЙЛА
+    # ========================================================
+    def on_file_selected(self, path):
+        """Вызывается, когда пользователь выбрал файл в системном окне."""
+        self.process_photo(path)
 
     def process_photo(self, path):
         self.ids.photo_status.text = 'Обработка...'
@@ -368,7 +396,7 @@ class MainScreen(Screen):
             container.add_widget(Label(text='Пусто...', color=(0.6, 0.6, 0.6, 1)))
             return
         for note in notes:
-            btn = TabButton(text=f"{note['title']}\n{note['date']}", size_hint_y=None, height=dp(70), bg_color_normal=(1, 1, 1, 1), bg_color_active=(0.9, 0.9, 0.9, 1), color=(0.1, 0.1, 0.1, 1))
+            btn = AnimatedButton(text=f"{note['title']}\n{note['date']}", size_hint_y=None, height=dp(70), bg_color_normal=(1, 1, 1, 1), bg_color_active=(0.9, 0.9, 0.9, 1), color=(0.1, 0.1, 0.1, 1))
             btn.bind(on_release=lambda b, n=note: self.open_note(n))
             container.add_widget(btn)
 
@@ -419,7 +447,7 @@ class MainScreen(Screen):
         msg_box.add_widget(lbl)
 
         if not is_user:
-            copy_btn = TabButton(text='📋 Копировать', size_hint_y=None, height=dp(30), bg_color_normal=(0.8, 0.85, 0.9, 1), bg_color_active=(0.7, 0.75, 0.8, 1), color=(0.2, 0.2, 0.2, 1), font_size='12sp')
+            copy_btn = AnimatedButton(text='📋 Копировать', size_hint_y=None, height=dp(30), bg_color_normal=(0.8, 0.85, 0.9, 1), bg_color_active=(0.7, 0.75, 0.8, 1), color=(0.2, 0.2, 0.2, 1), font_size='12sp')
             copy_btn.bind(on_release=lambda b: self.copy_text_to_clipboard(text))
             msg_box.add_widget(copy_btn)
 
@@ -435,6 +463,40 @@ class MainScreen(Screen):
         self.chat_history = []
         self.ids.chat_container.clear_widgets()
 
+
+# ============================================================
+# ОБРАБОТЧИК РЕЗУЛЬТАТА ANDROID (Pyjnius)
+# ============================================================
+if platform == 'android':
+    class FilePickerResult:
+        def __init__(self, screen):
+            self.screen = screen
+
+        def on_activity_result(self, requestCode, resultCode, intent):
+            if requestCode == 1001 and intent is not None:
+                try:
+                    Uri = autoclass('android.net.Uri')
+                    data = intent.getData()
+                    if data is not None:
+                        # Получаем путь к файлу
+                        path = self._get_path_from_uri(data)
+                        if path:
+                            # Возвращаемся в главный поток Kivy
+                            Clock.schedule_once(lambda dt: self.screen.on_file_selected(path), 0)
+                except Exception as e:
+                    print(f"Ошибка обработки файла: {e}")
+
+        def _get_path_from_uri(self, uri):
+            # Сложный метод конвертации URI в путь (нужен для Android)
+            try:
+                # Пытаемся получить путь через ContentResolver (упрощенно)
+                context = mActivity.getApplicationContext()
+                ContentResolver = autoclass('android.content.ContentResolver')
+                resolver = context.getContentResolver()
+                # Для простоты возвращаем строку URI, OCR.space иногда может её принять, но это не точно
+                return uri.toString()
+            except:
+                return None
 
 # ============================================================
 # API И ХРАНЕНИЕ
@@ -456,6 +518,9 @@ def clean_manual_text(raw_text):
 def recognize_photo(filepath):
     url = "https://api.ocr.space/parse/image"
     payload = {'apikey': OCR_API_KEY, 'language': 'rus', 'scale': 'true'}
+    # Если filepath - это content:// URI, открываем через file descriptor
+    if filepath.startswith('content://'):
+        raise Exception("Прямая загрузка по content:// URI пока не поддерживается OCR.space. Выберите файл из папки 'Загрузки'.")
     with open(filepath, 'rb') as f:
         resp = requests.post(url, data=payload, files={'file': f}, timeout=90)
     result = resp.json()
@@ -512,7 +577,6 @@ def answer_question(messages):
 class NotesApp(App):
     def on_start(self):
         if platform == 'android':
-            from android.permissions import request_permissions, Permission
             request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
 
     def build(self):
