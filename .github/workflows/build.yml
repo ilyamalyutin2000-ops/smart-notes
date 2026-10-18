@@ -31,9 +31,9 @@ jobs:
       - name: Install Buildozer
         run: |
           pip install --upgrade pip
-          pip install buildozer Cython==0.29.33 virtualenv
+          pip install buildozer Cython virtualenv
 
-      # ОЧИСТКА (обязательно, чтобы убрать мусор от неудачных попыток)
+      # Полная очистка перед сборкой
       - name: Clean everything
         run: |
           rm -rf .buildozer
