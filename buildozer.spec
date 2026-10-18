@@ -6,15 +6,12 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
-# ОБЯЗАТЕЛЬНО добавляем jnius (он используется в main.py) и requests
-requirements = python3==3.9.16,hostpython3==3.9.16,kivy==2.3.0,requests,jnius
+# БЕЗ jnius (чтобы сборка точно прошла)
+requirements = python3==3.9.16,hostpython3==3.9.16,kivy==2.3.0,requests
 
 orientation = portrait
 fullscreen = 0
-
-# Нужны права на чтение файлов для системного проводника
 android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
-
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
