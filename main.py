@@ -80,7 +80,7 @@ KV = """
                 background_color: 0.8, 0.8, 0.8, 1
                 on_release: root.switch_tab('chat')
 
-        # Исправление верстки: ScreenManager должен занимать всё свободное место
+        # Исправление верстки: ScreenManager занимает всё оставшееся место
         ScreenManager:
             id: content_manager
             size_hint_y: 1
@@ -249,7 +249,6 @@ class MainScreen(Screen):
 
     def open_file_chooser(self):
         content = BoxLayout(orientation='vertical')
-        # Путь по умолчанию для Android (может потребоваться разрешение)
         filechooser = FileChooserListView(path="/storage/emulated/0/Download", filters=['*.png', '*.jpg', '*.jpeg'])
         content.add_widget(filechooser)
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
@@ -436,14 +435,27 @@ def find_relevant_notes(question):
 def answer_question(messages):
     last_q = messages[-1]["content"]
     context = find_relevant_notes(last_q)
-    if not context: return "В конспектах нет информации по этой теме."
+    if not context: 
+        return "В конспектах нет информации по этой теме. Сначала сохраните конспект."
+        
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
     payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": f"Отвечай только по конспектам:\n{context}"}] + messages}
+    
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=90)
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e: return str(e)
+        # ПРОВЕРКА: если Groq вернул ошибку (не 200 ОК), показываем её
+        if resp.status_code != 200:
+            return f"Ошибка API (Код {resp.status_code}). Возможно, заблокирован доступ или закончился лимит."
+            
+        result = resp.json()
+        # ПРОВЕРКА: есть ли вообще ответ в нужном формате
+        if "choices" not in result:
+            return "Нейросеть вернула странный ответ. Попробуйте переформулировать вопрос."
+            
+        return result["choices"][0]["message"]["content"].strip()
+    except Exception as e: 
+        return f"Ошибка соединения: {str(e)}"
 
 # ============================================================
 # ЗАПУСК
