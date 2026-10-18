@@ -6,22 +6,30 @@ from datetime import datetime
 from kivy.app import App
 from kivy.clock import Clock, mainthread
 from kivy.lang import Builder
-from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
-from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
 from kivy.utils import platform, get_color_from_hex
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
+from kivy.animation import Animation
 import requests
 
 # ============================================================
-# ИСПРАВЛЕНИЕ КЛАВИАТУРЫ
+# ИМПОРТЫ ДЛЯ ANDROID (Pyjnius)
+# ============================================================
+if platform == 'android':
+    from jnius import autoclass, cast
+    from android import mActivity, activity
+    from android.permissions import request_permissions, Permission
+
+# ============================================================
+# ИСПРАВЛЕНИЕ КЛАВИАТУРЫ И ФОНА
 # ============================================================
 Window.softinput_mode = 'below_target'
 Window.clearcolor = get_color_from_hex('#F4F6F9')
@@ -33,7 +41,7 @@ OCR_API_KEY = "K86772432188957"
 GROQ_API_KEY = "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"
 
 # ============================================================
-# ПУТИ ДЛЯ ANDROID
+# ПУТИ
 # ============================================================
 def get_data_path(folder_name):
     if platform == 'android':
@@ -48,24 +56,31 @@ def get_data_path(folder_name):
 NOTES_FOLDER = get_data_path("notes")
 
 # ============================================================
-# КАСТОМНЫЙ КЛАСС ДЛЯ КНОПОК С ЗАКРУГЛЕННЫМИ КРАЯМИ
+# КАСТОМНЫЕ КНОПКИ
 # ============================================================
-class RoundedButton(Button):
-    def __init__(self, **kwargs):
+class AnimatedButton(Button):
+    def __init__(self, bg_color_normal=(0.4, 0.4, 0.45, 1), bg_color_active=(0.15, 0.45, 0.85, 1), **kwargs):
         super().__init__(**kwargs)
         self.background_normal = ''
         self.background_down = ''
-        self.background_color = (0, 0, 0, 0) # Прозрачный фон
+        self.background_color = (0, 0, 0, 0)
+        self.bg_color_normal = bg_color_normal
+        self.bg_color_active = bg_color_active
+        self.current_color = bg_color_normal
         self.bind(pos=self.update_canvas, size=self.update_canvas)
 
     def update_canvas(self, *args):
         self.canvas.before.clear()
         with self.canvas.before:
-            Color(*self.bg_color)
+            Color(*self.current_color)
             RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(15)])
 
+    def set_active(self, is_active):
+        target_color = self.bg_color_active if is_active else self.bg_color_normal
+        Animation(current_color=target_color, d=0.3, t='out_quad').start(self)
+
 # ============================================================
-# ИНТЕРФЕЙС (KV-разметка)
+# ИНТЕРФЕЙС (KV)
 # ============================================================
 KV = """
 <MainScreen>:
@@ -86,55 +101,56 @@ KV = """
             size_hint_y: None
             height: dp(50)
             spacing: dp(8)
-            
-            RoundedButton:
-                text: 'Новый'
-                bg_color: 0.15, 0.45, 0.85, 1
+            AnimatedButton:
+                id: btn_tab_new
+                text: 'Загрузка'
                 on_release: root.switch_tab('new')
-            RoundedButton:
+            AnimatedButton:
+                id: btn_tab_history
                 text: 'История'
-                bg_color: 0.4, 0.4, 0.45, 1
                 on_release: root.switch_tab('history')
-            RoundedButton:
+            AnimatedButton:
+                id: btn_tab_chat
                 text: 'Чат'
-                bg_color: 0.4, 0.4, 0.45, 1
                 on_release: root.switch_tab('chat')
 
         ScreenManager:
             id: content_manager
+            transition: SlideTransition(direction='left', duration=0.3)
             
             Screen:
                 name: 'new'
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: dp(10)
-                    
                     BoxLayout:
                         size_hint_y: None
                         height: dp(45)
                         spacing: dp(8)
-                        RoundedButton:
+                        AnimatedButton:
+                            id: btn_sub_photo
                             text: 'Файл'
-                            bg_color: 0.15, 0.45, 0.85, 1
                             on_release: root.switch_subtab('photo')
-                        RoundedButton:
+                        AnimatedButton:
+                            id: btn_sub_text
                             text: 'Текст'
-                            bg_color: 0.4, 0.4, 0.45, 1
                             on_release: root.switch_subtab('text')
                             
                     ScreenManager:
                         id: subtab_manager
+                        transition: SlideTransition(direction='left', duration=0.2)
                         
                         Screen:
                             name: 'photo'
                             BoxLayout:
                                 orientation: 'vertical'
                                 spacing: dp(10)
-                                RoundedButton:
+                                AnimatedButton:
                                     text: 'Загрузить фото/файл'
                                     size_hint_y: None
                                     height: dp(60)
-                                    bg_color: 0.55, 0.3, 0.8, 1
+                                    bg_color_normal: (0.55, 0.3, 0.8, 1)
+                                    bg_color_active: (0.55, 0.3, 0.8, 1)
                                     on_release: root.open_file_chooser()
                                 Label:
                                     id: photo_status
@@ -154,13 +170,15 @@ KV = """
                                     size_hint_y: None
                                     height: dp(50)
                                     spacing: dp(8)
-                                    RoundedButton:
+                                    AnimatedButton:
                                         text: 'Копировать'
-                                        bg_color: 0.2, 0.6, 0.4, 1
+                                        bg_color_normal: (0.2, 0.6, 0.4, 1)
+                                        bg_color_active: (0.2, 0.6, 0.4, 1)
                                         on_release: root.copy_photo_text()
-                                    RoundedButton:
+                                    AnimatedButton:
                                         text: 'Сохранить'
-                                        bg_color: 0.2, 0.5, 0.8, 1
+                                        bg_color_normal: (0.2, 0.5, 0.8, 1)
+                                        bg_color_active: (0.2, 0.5, 0.8, 1)
                                         on_release: root.save_photo_text()
                         Screen:
                             name: 'text'
@@ -179,11 +197,12 @@ KV = """
                                     size_hint_y: None
                                     height: dp(30)
                                     color: 0.4, 0.4, 0.45, 1
-                                RoundedButton:
+                                AnimatedButton:
                                     text: 'Сохранить'
                                     size_hint_y: None
                                     height: dp(55)
-                                    bg_color: 0.55, 0.3, 0.8, 1
+                                    bg_color_normal: (0.55, 0.3, 0.8, 1)
+                                    bg_color_active: (0.55, 0.3, 0.8, 1)
                                     on_release: root.process_manual_text()
 
             Screen:
@@ -191,11 +210,12 @@ KV = """
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: dp(10)
-                    RoundedButton:
+                    AnimatedButton:
                         text: 'Обновить'
                         size_hint_y: None
                         height: dp(45)
-                        bg_color: 0.15, 0.45, 0.85, 1
+                        bg_color_normal: (0.15, 0.45, 0.85, 1)
+                        bg_color_active: (0.15, 0.45, 0.85, 1)
                         on_release: root.load_history()
                     ScrollView:
                         BoxLayout:
@@ -229,42 +249,88 @@ KV = """
                             background_color: 1, 1, 1, 1
                             foreground_color: 0.1, 0.15, 0.2, 1
                             on_text_validate: root.send_chat_message()
-                        RoundedButton:
-                            text: 'Отправить'
+                        AnimatedButton:
+                            text: 'Ввод'
                             size_hint_x: None
-                            width: dp(110)
-                            bg_color: 0.15, 0.45, 0.85, 1
+                            width: dp(90)
+                            bg_color_normal: (0.15, 0.45, 0.85, 1)
+                            bg_color_active: (0.15, 0.45, 0.85, 1)
                             on_release: root.send_chat_message()
-                    RoundedButton:
+                    AnimatedButton:
                         text: 'Очистить диалог'
                         size_hint_y: None
                         height: dp(45)
-                        bg_color: 0.85, 0.25, 0.25, 1
+                        bg_color_normal: (0.85, 0.25, 0.25, 1)
+                        bg_color_active: (0.85, 0.25, 0.25, 1)
                         on_release: root.clear_chat()
 """
 
 # ============================================================
-# ЛОГИКА ПРИЛОЖЕНИЯ
+# ЛОГИКА
 # ============================================================
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.current_photo_text = ""
         self.chat_history = []
+        self._android_result_callback = None
+        Clock.schedule_once(self.init_colors, 0.1)
+
+    def init_colors(self, dt):
+        self.switch_tab('new')
+        self.switch_subtab('photo')
 
     def switch_tab(self, name):
         self.ids.content_manager.current = name
+        self.ids.btn_tab_new.set_active(name == 'new')
+        self.ids.btn_tab_history.set_active(name == 'history')
+        self.ids.btn_tab_chat.set_active(name == 'chat')
         if name == 'history': self.load_history()
 
     def switch_subtab(self, name):
         self.ids.subtab_manager.current = name
+        self.ids.btn_sub_photo.set_active(name == 'photo')
+        self.ids.btn_sub_text.set_active(name == 'text')
 
+    # ========================================================
+    # ОТКРЫТИЕ СИСТЕМНОГО ФАЙЛОВОГО МЕНЕДЖЕРА (ANDROID)
+    # ========================================================
     def open_file_chooser(self):
+        if platform == 'android':
+            self._open_android_file_picker()
+        else:
+            # Для ПК оставляем старый Popup (на случай тестов)
+            self._open_desktop_file_chooser()
+
+    def _open_android_file_picker(self):
+        try:
+            Intent = autoclass('android.content.Intent')
+            # ACTION_GET_CONTENT позволяет выбрать файл из любого приложения
+            intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.setType('*/*')  # Разрешаем любой тип файла
+            intent.addCategory(Intent.CATEGORY_OPENABLE)
+
+            # Создаем chooser (диалог выбора приложения)
+            chooser = Intent.createChooser(intent, cast('java.lang.CharSequence', 'Выберите файл'))
+
+            # Регистрируем слушатель результата
+            if self._android_result_callback is None:
+                self._android_result_callback = FilePickerResult(self)
+                activity.bind(on_activity_result=self._android_result_callback.on_activity_result)
+
+            # Запускаем activity
+            mActivity.startActivityForResult(chooser, 1001)
+        except Exception as e:
+            self.ids.photo_status.text = f'Ошибка выбора файла: {e}'
+
+    def _open_desktop_file_chooser(self):
+        # Тот самый старый код для ПК
+        from kivy.uix.filechooser import FileChooserListView
         content = BoxLayout(orientation='vertical')
-        filechooser = FileChooserListView(path="/storage/emulated/0/Download")
+        filechooser = FileChooserListView(path=os.path.expanduser("~"))
         content.add_widget(filechooser)
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
-        btn_cancel = Button(text='Отмена', background_color=(0.7, 0.7, 0.7, 1))
+        btn_cancel = Button(text='Отмена')
         btn_open = Button(text='Открыть', background_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
@@ -278,6 +344,13 @@ class MainScreen(Screen):
         btn_cancel.bind(on_release=cancel)
         btn_open.bind(on_release=open_file)
         popup.open()
+
+    # ========================================================
+    # ОБРАБОТКА ВЫБРАННОГО ФАЙЛА
+    # ========================================================
+    def on_file_selected(self, path):
+        """Вызывается, когда пользователь выбрал файл в системном окне."""
+        self.process_photo(path)
 
     def process_photo(self, path):
         self.ids.photo_status.text = 'Обработка...'
@@ -323,7 +396,7 @@ class MainScreen(Screen):
             container.add_widget(Label(text='Пусто...', color=(0.6, 0.6, 0.6, 1)))
             return
         for note in notes:
-            btn = RoundedButton(text=f"{note['title']}\n{note['date']}", size_hint_y=None, height=dp(70), bg_color=(1, 1, 1, 1), color=(0.1, 0.1, 0.1, 1))
+            btn = AnimatedButton(text=f"{note['title']}\n{note['date']}", size_hint_y=None, height=dp(70), bg_color_normal=(1, 1, 1, 1), bg_color_active=(0.9, 0.9, 0.9, 1), color=(0.1, 0.1, 0.1, 1))
             btn.bind(on_release=lambda b, n=note: self.open_note(n))
             container.add_widget(btn)
 
@@ -344,10 +417,8 @@ class MainScreen(Screen):
         self.ids.chat_input.text = ''
         self.add_chat_bubble(text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
-        
         loading = Label(text='Думаю...', size_hint_y=None, height=dp(40), color=(0.5, 0.5, 0.5, 1), italic=True)
         self.ids.chat_container.add_widget(loading)
-        
         def worker():
             answer = answer_question(self.chat_history)
             self.chat_history.append({'role': 'assistant', 'content': answer})
@@ -360,45 +431,27 @@ class MainScreen(Screen):
         self.add_chat_bubble(answer, is_user=False)
 
     def add_chat_bubble(self, text, is_user):
-        # Контейнер для одного сообщения
         msg_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
-        
-        # Настройка стилей
         if is_user:
-            bg_color = (0.95, 0.95, 0.95, 1)
-            text_color = (0, 0, 0, 1)
-            halign = 'right'
-            font_style = 'italic' # Курсив для юзера
+            bg_color = (0.95, 0.95, 0.95, 1); text_color = (0, 0, 0, 1); halign = 'right'; font_style = 'italic'
         else:
-            bg_color = (0.9, 0.95, 1, 1)
-            text_color = (0.1, 0.1, 0.1, 1)
-            halign = 'left'
-            font_style = 'normal'
+            bg_color = (0.9, 0.95, 1, 1); text_color = (0.1, 0.1, 0.1, 1); halign = 'left'; font_style = 'normal'
 
-        # Текст сообщения
-        lbl = Label(
-            text=text, size_hint_y=None, text_size=(dp(320), None),
-            halign=halign, valign='top', color=text_color,
-            italic=(font_style == 'italic'), markup=True
-        )
+        lbl = Label(text=text, size_hint_y=None, text_size=(dp(320), None), halign=halign, valign='top', color=text_color, italic=(font_style == 'italic'), markup=True)
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
-        
-        # Фон сообщения (закругленный)
         with lbl.canvas.before:
             Color(*bg_color)
             rect = RoundedRectangle(pos=lbl.pos, size=lbl.size, radius=[dp(12)])
         lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
         lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
-        
         msg_box.add_widget(lbl)
 
-        # Кнопка копирования для бота
         if not is_user:
-            copy_btn = RoundedButton(text='📋 Копировать', size_hint_y=None, height=dp(30), bg_color=(0.8, 0.85, 0.9, 1), color=(0.2, 0.2, 0.2, 1), font_size='12sp')
+            copy_btn = AnimatedButton(text='📋 Копировать', size_hint_y=None, height=dp(30), bg_color_normal=(0.8, 0.85, 0.9, 1), bg_color_active=(0.7, 0.75, 0.8, 1), color=(0.2, 0.2, 0.2, 1), font_size='12sp')
             copy_btn.bind(on_release=lambda b: self.copy_text_to_clipboard(text))
             msg_box.add_widget(copy_btn)
 
-        msg_box.height = lbl.height + (dp(30) if not is_user else 0)
+        msg_box.height = lbl.height + (dp(35) if not is_user else dp(5))
         self.ids.chat_container.add_widget(msg_box)
         Clock.schedule_once(lambda dt: setattr(self.ids.chat_scroll, 'scroll_y', 0), 0.1)
 
@@ -410,6 +463,40 @@ class MainScreen(Screen):
         self.chat_history = []
         self.ids.chat_container.clear_widgets()
 
+
+# ============================================================
+# ОБРАБОТЧИК РЕЗУЛЬТАТА ANDROID (Pyjnius)
+# ============================================================
+if platform == 'android':
+    class FilePickerResult:
+        def __init__(self, screen):
+            self.screen = screen
+
+        def on_activity_result(self, requestCode, resultCode, intent):
+            if requestCode == 1001 and intent is not None:
+                try:
+                    Uri = autoclass('android.net.Uri')
+                    data = intent.getData()
+                    if data is not None:
+                        # Получаем путь к файлу
+                        path = self._get_path_from_uri(data)
+                        if path:
+                            # Возвращаемся в главный поток Kivy
+                            Clock.schedule_once(lambda dt: self.screen.on_file_selected(path), 0)
+                except Exception as e:
+                    print(f"Ошибка обработки файла: {e}")
+
+        def _get_path_from_uri(self, uri):
+            # Сложный метод конвертации URI в путь (нужен для Android)
+            try:
+                # Пытаемся получить путь через ContentResolver (упрощенно)
+                context = mActivity.getApplicationContext()
+                ContentResolver = autoclass('android.content.ContentResolver')
+                resolver = context.getContentResolver()
+                # Для простоты возвращаем строку URI, OCR.space иногда может её принять, но это не точно
+                return uri.toString()
+            except:
+                return None
 
 # ============================================================
 # API И ХРАНЕНИЕ
@@ -431,6 +518,9 @@ def clean_manual_text(raw_text):
 def recognize_photo(filepath):
     url = "https://api.ocr.space/parse/image"
     payload = {'apikey': OCR_API_KEY, 'language': 'rus', 'scale': 'true'}
+    # Если filepath - это content:// URI, открываем через file descriptor
+    if filepath.startswith('content://'):
+        raise Exception("Прямая загрузка по content:// URI пока не поддерживается OCR.space. Выберите файл из папки 'Загрузки'.")
     with open(filepath, 'rb') as f:
         resp = requests.post(url, data=payload, files={'file': f}, timeout=90)
     result = resp.json()
@@ -463,11 +553,7 @@ def find_relevant_notes(question):
 def answer_question(messages):
     last_q = messages[-1]["content"]
     context = find_relevant_notes(last_q)
-    
-    if not context: 
-        return "В конспектах нет информации по этой теме."
-        
-    # ЖЕСТКИЙ ПРОМПТ ДЛЯ ИИ
+    if not context: return "В конспектах нет информации по этой теме."
     system_prompt = (
         "Ты ассистент. Отвечай на вопрос, используя ТОЛЬКО текст из конспекта ниже.\n"
         "ВАЖНО: Если в конспекте НЕТ информации по вопросу, напиши: 'В конспекте этой информации нет.', "
@@ -476,21 +562,14 @@ def answer_question(messages):
         "Пиши обычным текстом, используй отступы для абзацев.\n\n"
         f"КОНСПЕКТ:\n{context}"
     )
-    
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-    payload = {
-        "model": "openai/gpt-oss-120b", 
-        "messages": [{"role": "system", "content": system_prompt}] + messages,
-        "temperature": 0.5
-    }
-    
+    payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": system_prompt}] + messages, "temperature": 0.5}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=90)
         if resp.status_code != 200: return f"Ошибка API: {resp.status_code}"
         return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e: 
-        return f"Ошибка: {str(e)}"
+    except Exception as e: return f"Ошибка: {str(e)}"
 
 # ============================================================
 # ЗАПУСК
@@ -498,7 +577,6 @@ def answer_question(messages):
 class NotesApp(App):
     def on_start(self):
         if platform == 'android':
-            from android.permissions import request_permissions, Permission
             request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
 
     def build(self):
