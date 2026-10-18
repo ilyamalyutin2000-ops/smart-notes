@@ -6,6 +6,7 @@ version = "0.1"
 [tool.briefcase.app.smartnotes]
 formal_name = "Умный конспект"
 description = "Умный конспект"
+license = "MIT"
 sources = ["."]
 requires = ["kivy", "requests"]
 
