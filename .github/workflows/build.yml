@@ -12,12 +12,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Жестко ставим Python 3.11 (совместим с Kivy)
+      # Жестко ставим Python 3.10
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
+      # Ставим Java 17
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
