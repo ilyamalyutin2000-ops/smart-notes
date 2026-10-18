@@ -1,0 +1,12 @@
+[tool.briefcase]
+project_name = "smartnotes"
+bundle = "org.smartnotes"
+version = "0.1"
+
+[tool.briefcase.app.smartnotes]
+formal_name = "Умный конспект"
+description = "Умный конспект"
+sources = ["."]
+requires = ["kivy", "requests"]
+
+[tool.briefcase.app.smartnotes.android]
