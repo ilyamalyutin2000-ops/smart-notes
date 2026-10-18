@@ -28,7 +28,7 @@ Window.softinput_mode = 'below_target'
 Window.clearcolor = get_color_from_hex('#F4F6F9')
 
 # ============================================================
-# НАСТРОЙКИ (Ключи)
+# НАСТРОЙКИ
 # ============================================================
 OCR_API_KEY = "K86772432188957"
 GROQ_API_KEY = "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"
@@ -49,7 +49,7 @@ def get_data_path(folder_name):
 NOTES_FOLDER = get_data_path("notes")
 
 # ============================================================
-# КАСТОМНЫЕ КНОПКИ (Смена цвета и текста)
+# КАСТОМНЫЕ КНОПКИ
 # ============================================================
 class TabButton(Button):
     def __init__(self, bg_color_normal=(0.4, 0.4, 0.45, 1), bg_color_active=(0.15, 0.45, 0.85, 1), **kwargs):
@@ -60,12 +60,9 @@ class TabButton(Button):
         self.bg_color_normal = bg_color_normal
         self.bg_color_active = bg_color_active
         self.current_color = bg_color_normal
-        
-        # Цвета текста: белый для активных, светло-серый для неактивных
-        self.color_normal = (0.9, 0.9, 0.9, 1) 
-        self.color_active = (1, 1, 1, 1)       
+        self.color_normal = (0.9, 0.9, 0.9, 1)
+        self.color_active = (1, 1, 1, 1)
         self.color = self.color_normal
-        
         self.bind(pos=self.update_canvas, size=self.update_canvas)
 
     def update_canvas(self, *args):
@@ -75,12 +72,9 @@ class TabButton(Button):
             RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(12)])
 
     def set_active(self, is_active):
-        # Плавно меняем цвет фона и текста
         target_bg = self.bg_color_active if is_active else self.bg_color_normal
         target_text = self.color_active if is_active else self.color_normal
-        
-        anim = Animation(current_color=target_bg, color=target_text, d=0.2, t='out_quad')
-        anim.start(self)
+        Animation(current_color=target_bg, color=target_text, d=0.2, t='out_quad').start(self)
 
 # ============================================================
 # ИНТЕРФЕЙС (KV)
@@ -298,51 +292,36 @@ class MainScreen(Screen):
 
     def switch_tab(self, name):
         self.ids.content_manager.current = name
-        
-        # Подсветка кнопок вкладок
         self.ids.btn_tab_new.set_active(name == 'new')
         self.ids.btn_tab_history.set_active(name == 'history')
         self.ids.btn_tab_chat.set_active(name == 'chat')
-        
         if name == 'history': self.load_history()
 
     def switch_subtab(self, name):
         self.ids.subtab_manager.current = name
-        # Подсветка подвкладок
         self.ids.btn_sub_photo.set_active(name == 'photo')
         self.ids.btn_sub_text.set_active(name == 'text')
 
-    # ========================================================
-    # ОТКРЫТИЕ ФАЙЛА (Встроенный проводник Kivy)
-    # ========================================================
     def open_file_chooser(self):
         content = BoxLayout(orientation='vertical')
-        # Путь по умолчанию для Android (папка Загрузки)
         filechooser = FileChooserListView(path="/storage/emulated/0/Download")
         content.add_widget(filechooser)
-        
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
         btn_cancel = Button(text='Отмена', background_color=(0.7, 0.7, 0.7, 1))
         btn_open = Button(text='Открыть', background_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
         content.add_widget(btn_box)
-        
         popup = Popup(title='Выберите файл', content=content, size_hint=(0.95, 0.95))
-        
         def cancel(*_): popup.dismiss()
         def open_file(*_):
             if filechooser.selection:
                 popup.dismiss()
                 self.process_photo(filechooser.selection[0])
-                
         btn_cancel.bind(on_release=cancel)
         btn_open.bind(on_release=open_file)
         popup.open()
 
-    # ========================================================
-    # ОБРАБОТКА
-    # ========================================================
     def process_photo(self, path):
         self.ids.photo_status.text = 'Обработка...'
         self.ids.photo_output.text = 'Подождите...'
