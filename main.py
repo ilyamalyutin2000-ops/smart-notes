@@ -16,7 +16,13 @@ from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
 from kivy.utils import platform
+from kivy.core.window import Window
 import requests
+
+# ============================================================
+# ИСПРАВЛЕНИЕ КЛАВИАТУРЫ (Окно сдвигается вверх при вводе)
+# ============================================================
+Window.softinput_mode = 'below_target'
 
 # ============================================================
 # НАСТРОЙКИ (Ключи)
@@ -25,7 +31,7 @@ OCR_API_KEY = "K86772432188957"
 GROQ_API_KEY = "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"
 
 # ============================================================
-# ПУТИ ДЛЯ ANDROID (Чтобы приложение не падало при сохранении)
+# ПУТИ ДЛЯ ANDROID И ЗАПРОС ПРАВ
 # ============================================================
 def get_data_path(folder_name):
     if platform == 'android':
@@ -80,7 +86,6 @@ KV = """
                 background_color: 0.8, 0.8, 0.8, 1
                 on_release: root.switch_tab('chat')
 
-        # Исправление верстки: ScreenManager занимает всё оставшееся место
         ScreenManager:
             id: content_manager
             size_hint_y: 1
@@ -96,7 +101,7 @@ KV = """
                         height: dp(45)
                         spacing: dp(5)
                         Button:
-                            text: 'Фото'
+                            text: 'Файл'
                             background_color: 0.22, 0.5, 0.79, 1
                             on_release: root.switch_subtab('photo')
                         Button:
@@ -114,14 +119,14 @@ KV = """
                                 orientation: 'vertical'
                                 spacing: dp(10)
                                 Button:
-                                    text: 'Загрузить фото конспекта'
+                                    text: 'Загрузить фото/файл'
                                     size_hint_y: None
                                     height: dp(60)
                                     background_color: 0.49, 0.35, 0.83, 1
                                     on_release: root.open_file_chooser()
                                 Label:
                                     id: photo_status
-                                    text: 'Выберите фото для обработки'
+                                    text: 'Выберите файл для обработки'
                                     size_hint_y: None
                                     height: dp(30)
                                     color: 0.44, 0.5, 0.58, 1
@@ -249,7 +254,8 @@ class MainScreen(Screen):
 
     def open_file_chooser(self):
         content = BoxLayout(orientation='vertical')
-        filechooser = FileChooserListView(path="/storage/emulated/0/Download", filters=['*.png', '*.jpg', '*.jpeg'])
+        # Убрали фильтры, теперь можно выбрать любой файл
+        filechooser = FileChooserListView(path="/storage/emulated/0/Download")
         content.add_widget(filechooser)
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
         btn_cancel = Button(text='Отмена')
@@ -257,7 +263,7 @@ class MainScreen(Screen):
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
         content.add_widget(btn_box)
-        popup = Popup(title='Выберите фото', content=content, size_hint=(0.95, 0.95))
+        popup = Popup(title='Выберите файл', content=content, size_hint=(0.95, 0.95))
         def cancel(*_): popup.dismiss()
         def open_file(*_):
             if filechooser.selection:
@@ -440,19 +446,15 @@ def answer_question(messages):
         
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-    payload = {"model": "llama-3.3-70b-versatile", "messages": [{"role": "system", "content": f"Отвечай только по конспектам:\n{context}"}] + messages}
+    payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": f"Отвечай только по конспектам:\n{context}"}] + messages}
     
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=90)
-        # ПРОВЕРКА: если Groq вернул ошибку (не 200 ОК), показываем её
         if resp.status_code != 200:
             return f"Ошибка API (Код {resp.status_code}). Возможно, заблокирован доступ или закончился лимит."
-            
         result = resp.json()
-        # ПРОВЕРКА: есть ли вообще ответ в нужном формате
         if "choices" not in result:
             return "Нейросеть вернула странный ответ. Попробуйте переформулировать вопрос."
-            
         return result["choices"][0]["message"]["content"].strip()
     except Exception as e: 
         return f"Ошибка соединения: {str(e)}"
@@ -461,6 +463,11 @@ def answer_question(messages):
 # ЗАПУСК
 # ============================================================
 class NotesApp(App):
+    def on_start(self):
+        if platform == 'android':
+            from android.permissions import request_permissions, Permission
+            request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
+
     def build(self):
         self.title = "Умный конспект"
         Builder.load_string(KV)
