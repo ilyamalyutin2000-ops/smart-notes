@@ -74,6 +74,7 @@ class TabButton(Button):
 # ============================================================
 KV = """
 <MainScreen>:
+    transition: SlideTransition(direction='left', duration=0.3)
     BoxLayout:
         orientation: 'vertical'
         padding: dp(10)
