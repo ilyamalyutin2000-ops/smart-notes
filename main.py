@@ -25,7 +25,7 @@ from kivy.animation import Animation
 # НАСТРОЙКИ
 # ============================================================
 OCR_API_KEY = "K86772432188957"
-GROQ_API_KEY = "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"
+OPENROUTER_API_KEY = "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"
 
 # ============================================================
 # БЕЗОПАСНЫЕ ПУТИ
@@ -396,7 +396,7 @@ class MainScreen(Screen):
                 self.ids.learn_container.clear_widgets()
                 self.add_learn_bubble("Материал загружен! Составляю план...", is_user=False)
                 prompt = f"Вот мой конспект:\n{self.learn_context}\n\nСоставь краткий пошаговый план обучения по этой теме и задай мне первый вопрос (задание)."
-                answer = call_groq([{"role": "user", "content": prompt}])
+                answer = call_openrouter([{"role": "user", "content": prompt}])
                 self.learn_history.append({'role': 'assistant', 'content': answer})
                 self.update_learn_answer(answer)
             except Exception as e:
@@ -415,7 +415,7 @@ class MainScreen(Screen):
             try:
                 prompt = f"Мой ответ: {text}\nОцени ответ и задай следующий вопрос."
                 messages = [{"role": "system", "content": "Ты ИИ-учитель."}] + self.learn_history + [{"role": "user", "content": prompt}]
-                answer = call_groq(messages)
+                answer = call_openrouter(messages)
                 self.learn_history.append({'role': 'assistant', 'content': answer})
                 self.update_learn_answer(answer, loading)
             except Exception as e:
@@ -495,14 +495,20 @@ class MainScreen(Screen):
         except: pass
 
 # ============================================================
-# API С ИСПОЛЬЗОВАНИЕМ URLLIB (Не ломает сборку)
+# API С ИСПОЛЬЗОВАНИЕМ URLLIB И OPENROUTER
 # ============================================================
 def clean_text(raw_text):
     if not raw_text: return ""
     try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-        payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": "Убери символы разметки. Только чистый текст."}, {"role": "user", "content": raw_text}]}
+        url = "https://openrouter.ai/api/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json", 
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}"
+        }
+        payload = {
+            "model": "meta-llama/llama-3-8b-instruct",
+            "messages": [{"role": "system", "content": "Убери символы разметки. Только чистый текст."}, {"role": "user", "content": raw_text}]
+        }
         
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
@@ -586,10 +592,17 @@ def find_relevant_notes(question):
         return "\n\n".join(n.get("text", "") for _, n in scored[:3])[:6000]
     except: return ""
 
-def call_groq(messages):
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-    payload = {"model": "openai/gpt-oss-120b", "messages": messages, "temperature": 0.5}
+def call_openrouter(messages):
+    url = "https://openrouter.ai/api/v1/chat/completions"
+    headers = {
+        "Content-Type": "application/json", 
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}"
+    }
+    payload = {
+        "model": "meta-llama/llama-3-8b-instruct", 
+        "messages": messages, 
+        "temperature": 0.5
+    }
     try:
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers=headers, method='POST')
@@ -610,7 +623,7 @@ def answer_question(messages):
         f"КОНСПЕКТ:\n{context}"
     )
     full_messages = [{"role": "system", "content": system_prompt}] + messages
-    return call_groq(full_messages)
+    return call_openrouter(full_messages)
 
 # ============================================================
 # ЗАПУСК
