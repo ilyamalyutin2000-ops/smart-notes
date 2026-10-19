@@ -2,6 +2,9 @@
 import os
 import json
 import threading
+import base64
+import urllib.request
+import urllib.parse
 from datetime import datetime
 from kivy.app import App
 from kivy.clock import Clock, mainthread
@@ -15,10 +18,8 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
-from kivy.utils import platform
 from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
-import requests
 
 # ============================================================
 # НАСТРОЙКИ
@@ -40,7 +41,7 @@ def init_storage():
         NOTES_FOLDER = "."
 
 # ============================================================
-# КАСТОМНЫЕ КНОПКИ (вернули красоту)
+# КАСТОМНЫЕ КНОПКИ
 # ============================================================
 class TabButton(Button):
     def __init__(self, bg_color_normal=(0.4, 0.4, 0.45, 1), bg_color_active=(0.15, 0.45, 0.85, 1), **kwargs):
@@ -395,7 +396,7 @@ class MainScreen(Screen):
                 self.ids.learn_container.clear_widgets()
                 self.add_learn_bubble("Материал загружен! Составляю план...", is_user=False)
                 prompt = f"Вот мой конспект:\n{self.learn_context}\n\nСоставь краткий пошаговый план обучения по этой теме и задай мне первый вопрос (задание)."
-                answer = ask_groq(prompt, is_tutor=True)
+                answer = call_groq([{"role": "user", "content": prompt}])
                 self.learn_history.append({'role': 'assistant', 'content': answer})
                 self.update_learn_answer(answer)
             except Exception as e:
@@ -413,7 +414,8 @@ class MainScreen(Screen):
         def worker():
             try:
                 prompt = f"Мой ответ: {text}\nОцени ответ и задай следующий вопрос."
-                answer = ask_groq(prompt, is_tutor=True, history=self.learn_history)
+                messages = [{"role": "system", "content": "Ты ИИ-учитель."}] + self.learn_history + [{"role": "user", "content": prompt}]
+                answer = call_groq(messages)
                 self.learn_history.append({'role': 'assistant', 'content': answer})
                 self.update_learn_answer(answer, loading)
             except Exception as e:
@@ -493,7 +495,7 @@ class MainScreen(Screen):
         except: pass
 
 # ============================================================
-# API С ЗАЩИТОЙ
+# API С ИСПОЛЬЗОВАНИЕМ URLLIB (Не ломает сборку)
 # ============================================================
 def clean_text(raw_text):
     if not raw_text: return ""
@@ -501,8 +503,12 @@ def clean_text(raw_text):
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
         payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": "Убери символы разметки. Только чистый текст."}, {"role": "user", "content": raw_text}]}
-        resp = requests.post(url, json=payload, headers=headers, timeout=10)
-        if resp.status_code == 200: return resp.json()["choices"][0]["message"]["content"].strip()
+        
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req, timeout=15) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return result["choices"][0]["message"]["content"].strip()
     except Exception as e:
         print(f"Ошибка нейросети при чистке: {e}")
     return raw_text.replace('*', '').replace('#', '').strip()
@@ -512,10 +518,21 @@ def recognize_photo(filepath):
         raise Exception("Файл не найден.")
     try:
         url = "https://api.ocr.space/parse/image"
-        payload = {'apikey': OCR_API_KEY, 'language': 'rus', 'scale': 'true'}
-        with open(filepath, 'rb') as f:
-            resp = requests.post(url, data=payload, files={'file': f}, timeout=15)
-        result = resp.json()
+        with open(filepath, "rb") as f:
+            encoded_image = base64.b64encode(f.read()).decode('utf-8')
+            
+        payload = {
+            'apikey': OCR_API_KEY, 
+            'language': 'rus', 
+            'scale': 'true',
+            'base64Image': f"data:image/jpeg;base64,{encoded_image}"
+        }
+        data = urllib.parse.urlencode(payload).encode('utf-8')
+        
+        req = urllib.request.Request(url, data=data, method='POST')
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            
         if result.get('IsErroredOnProcessing'): 
             raise Exception(result.get('ErrorMessage'))
         return result.get('ParsedResults', [{}])[0].get('ParsedText', '')
@@ -569,19 +586,16 @@ def find_relevant_notes(question):
         return "\n\n".join(n.get("text", "") for _, n in scored[:3])[:6000]
     except: return ""
 
-def ask_groq(prompt, is_tutor=False, history=[]):
-    system = "Ты ассистент. Отвечай на основе конспекта."
-    if is_tutor:
-        system = "Ты ИИ-учитель. Твоя задача вести диалог по плану, задавать вопросы и проверять ответы."
-    messages = [{"role": "system", "content": system}] + history + [{"role": "user", "content": prompt}]
+def call_groq(messages):
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
     payload = {"model": "openai/gpt-oss-120b", "messages": messages, "temperature": 0.5}
     try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=15)
-        if resp.status_code != 200: 
-            return f"Ошибка API: {resp.status_code}. Проверьте интернет или VPN."
-        return resp.json()["choices"][0]["message"]["content"].strip()
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return result["choices"][0]["message"]["content"].strip()
     except Exception as e: 
         return f"Ошибка сети: {str(e)}"
 
@@ -595,14 +609,8 @@ def answer_question(messages):
         "Если нет, напиши 'В конспекте этой информации нет.', а затем 'Дополнительная информация:'.\n"
         f"КОНСПЕКТ:\n{context}"
     )
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-    payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": system_prompt}] + messages}
-    try:
-        resp = requests.post(url, json=payload, headers=headers, timeout=15)
-        return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e: 
-        return f"Ошибка: {str(e)}"
+    full_messages = [{"role": "system", "content": system_prompt}] + messages
+    return call_groq(full_messages)
 
 # ============================================================
 # ЗАПУСК
