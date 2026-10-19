@@ -3,6 +3,8 @@ import os
 import json
 import threading
 import base64
+import ssl
+import urllib.request
 from datetime import datetime
 from kivy.app import App
 from kivy.clock import Clock, mainthread
@@ -16,26 +18,18 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
-from kivy.utils import platform, get_color_from_hex
+from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
-from kivy.animation import Animation
 
 # ============================================================
-# НАСТРОЙКА ОКНА (Безопасный фон)
+# НАСТРОЙКА ОКНА
 # ============================================================
 Window.clearcolor = get_color_from_hex('#F4F6F9')
 
-# ============================================================
-# ИМПОРТЫ ANDROID
-# ============================================================
-if platform == 'android':
-    from jnius import autoclass, cast
-    from android import mActivity
-    URL = autoclass('java.net.URL')
-    HttpURLConnection = autoclass('java.net.HttpURLConnection')
-    InputStreamReader = autoclass('java.io.InputStreamReader')
-    BufferedReader = autoclass('java.io.BufferedReader')
-    StringBuilder = autoclass('java.lang.StringBuilder')
+# ИГНОРИРУЕМ ОШИБКИ SSL (Чтобы Android не блокировал HTTPS)
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
 
 # ============================================================
 # НАСТРОЙКИ
@@ -53,55 +47,20 @@ def init_storage():
     except: NOTES_FOLDER = "."
 
 # ============================================================
-# БЕЗОПАСНЫЙ СЕТЕВОЙ ЗАПРОС
+# СЕТЕВОЙ ЗАПРОС (С защитой от вылетов)
 # ============================================================
 def safe_url_request(url, json_data=None, headers=None):
-    if platform != 'android':
-        return "Ошибка: Этот код работает только на Android."
     try:
-        url_obj = URL(url)
-        conn = cast('java.net.HttpURLConnection', url_obj.openConnection())
-        conn.setRequestMethod("POST" if json_data else "GET")
-        conn.setDoOutput(True)
-        conn.setConnectTimeout(15000)
-        conn.setReadTimeout(15000)
+        data = json_data.encode('utf-8') if json_data else None
+        req = urllib.request.Request(url, data=data, headers=headers or {}, method='POST' if data else 'GET')
         
-        if headers:
-            for key, val in headers.items():
-                conn.setRequestProperty(key, val)
-        if json_data:
-            output_stream = conn.getOutputStream()
-            output_stream.write(json_data.encode('utf-8'))
-            output_stream.flush()
-            output_stream.close()
-            
-        response_code = conn.getResponseCode()
-        if response_code != 200:
-            error_stream = conn.getErrorStream()
-            if error_stream is not None:
-                reader = BufferedReader(InputStreamReader(error_stream))
-                error_response = StringBuilder()
-                line = reader.readLine()
-                while line is not None:
-                    error_response.append(line)
-                    line = reader.readLine()
-                reader.close()
-                return f"Ошибка API ({response_code}): {error_response.toString()[:200]}"
-            return f"Ошибка API: {response_code}"
-            
-        input_stream = InputStreamReader(conn.getInputStream())
-        reader = BufferedReader(input_stream)
-        response = StringBuilder()
-        line = reader.readLine()
-        while line is not None:
-            response.append(line)
-            line = reader.readLine()
-        reader.close()
-        
-        res_str = str(response.toString())
-        return res_str if res_str.strip() else "Ошибка: Пустой ответ."
+        with urllib.request.urlopen(req, context=ssl_context, timeout=20) as response:
+            return response.read().decode('utf-8')
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8')
+        return f"Ошибка API ({e.code}): {error_body[:150]}"
     except Exception as e:
-        return f"Ошибка сети: {e}"
+        return f"Ошибка сети: {str(e)}"
 
 # ============================================================
 # ИНТЕРФЕЙС
@@ -327,27 +286,21 @@ class MainScreen(Screen):
         self.add_chat_bubble(answer, is_user=False)
 
     def add_chat_bubble(self, text, is_user):
-        # Безопасный пузырь (просто Label с отступами и цветом)
         msg_layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
-        
-        # Текст
         lbl = Label(text=text, size_hint_y=None, text_size=(dp(300), None), 
                     halign='right' if is_user else 'left', valign='top', 
                     color=(0, 0, 0, 1) if is_user else (0, 0, 0.5, 1), markup=True)
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
         
-        # Добавляем отступы (как в пузыре)
         if is_user:
-            msg_layout.add_widget(Label(size_hint_x=0.2)) # Пустое место слева
+            msg_layout.add_widget(Label(size_hint_x=0.2))
             msg_layout.add_widget(lbl)
         else:
             msg_layout.add_widget(lbl)
-            msg_layout.add_widget(Label(size_hint_x=0.2)) # Пустое место справа
+            msg_layout.add_widget(Label(size_hint_x=0.2))
 
         msg_layout.height = lbl.height + dp(10)
         self.ids.chat_container.add_widget(msg_layout)
-        
-        # Автоматическая прокрутка вниз
         Clock.schedule_once(lambda dt: setattr(self.ids.chat_container, 'height', self.ids.chat_container.minimum_height), 0.1)
 
 def save_note(text):
