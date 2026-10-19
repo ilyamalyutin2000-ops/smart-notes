@@ -650,13 +650,22 @@ def answer_question(messages):
 class NotesApp(App):
     def build(self):
         global NOTES_FOLDER
-        # Инициализируем папку ТОЛЬКО после старта App
-        NOTES_FOLDER = get_data_path("notes")
-        
-        Builder.load_string(KV)
-        sm = ScreenManager()
-        sm.add_widget(MainScreen(name='main'))
-        return sm
+        try:
+            # Инициализируем папку ТОЛЬКО после старта App
+            NOTES_FOLDER = get_data_path("notes")
+            
+            Builder.load_string(KV)
+            sm = ScreenManager()
+            sm.add_widget(MainScreen(name='main'))
+            return sm
+        except Exception as e:
+            # Если приложение падает при запуске, показываем ошибку на экране
+            return Label(
+                text=f"ОШИБКА ЗАПУСКА:\n{str(e)}", 
+                color=(1, 0, 0, 1), 
+                font_size='16sp',
+                halign='center'
+            )
 
 if __name__ == "__main__":
     NotesApp().run()
