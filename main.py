@@ -18,6 +18,7 @@ from kivy.uix.textinput import TextInput
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
+from kivy.animation import Animation
 
 # ============================================================
 # НАСТРОЙКА
@@ -55,7 +56,7 @@ def safe_url_request(url, json_data=None, headers=None):
         return f"Ошибка сети: {str(e)}"
 
 # ============================================================
-# ИНТЕРФЕЙС (МАКСИМАЛЬНО ПРОСТОЙ)
+# ИНТЕРФЕЙС
 # ============================================================
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
@@ -66,7 +67,6 @@ KV = """
         padding: dp(15)
         spacing: dp(15)
         
-        # Заголовок с кнопками вкладок
         BoxLayout:
             size_hint_y: None
             height: dp(50)
@@ -102,16 +102,17 @@ KV = """
                     orientation: 'vertical'
                     spacing: dp(15)
                     
+                    # Блок с фото
                     TextInput:
                         id: path_input
-                        hint_text: 'Путь к файлу (напр. /storage/emulated/0/Download/photo.jpg)'
+                        hint_text: 'Путь к фото (напр. /storage/emulated/0/Download/photo.jpg)'
                         multiline: False
                         size_hint_y: None
                         height: dp(50)
                         padding: dp(15), dp(15)
                     
                     Button:
-                        text: 'Обработать фото'
+                        text: 'Распознать фото'
                         size_hint_y: None
                         height: dp(60)
                         background_normal: ''
@@ -120,17 +121,41 @@ KV = """
                         
                     Label:
                         id: photo_status
-                        text: 'Введите путь и нажмите кнопку'
+                        text: 'Путь к файлу'
                         color: 0.4, 0.4, 0.45, 1
+                        size_hint_y: None
+                        height: dp(30)
                         
                     ScrollView:
                         Label:
                             id: photo_output
-                            text: 'Здесь появится текст...'
+                            text: 'Здесь появится распознанный текст...'
                             size_hint_y: None
                             height: self.texture_size[1]
                             text_size: self.width, None
                             color: 0.1, 0.15, 0.2, 1
+
+                    # Блок с ручным вводом текста
+                    Label:
+                        text: 'Или введите текст вручную:'
+                        size_hint_y: None
+                        height: dp(30)
+                        color: 0.4, 0.4, 0.45, 1
+                        
+                    TextInput:
+                        id: manual_text_input
+                        hint_text: 'Напишите свой конспект здесь...'
+                        multiline: True
+                        size_hint_y: 0.3
+                        padding: dp(15), dp(15)
+                        
+                    Button:
+                        text: 'Сохранить текст'
+                        size_hint_y: None
+                        height: dp(50)
+                        background_normal: ''
+                        background_color: 0.2, 0.6, 0.4, 1
+                        on_release: root.save_manual_text()
 
             # === ЭКРАН ИСТОРИИ ===
             Screen:
@@ -139,9 +164,11 @@ KV = """
                     orientation: 'vertical'
                     spacing: dp(10)
                     Button:
-                        text: 'Обновить список'
+                        text: 'Обновить'
                         size_hint_y: None
-                        height: dp(50)
+                        height: dp(45)
+                        background_normal: ''
+                        background_color: 0.15, 0.45, 0.85, 1
                         on_release: root.load_history()
                     ScrollView:
                         BoxLayout:
@@ -164,7 +191,7 @@ KV = """
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            spacing: dp(10)
+                            spacing: dp(15)
                             
                     BoxLayout:
                         size_hint_y: None
@@ -187,6 +214,9 @@ KV = """
                             on_release: root.send_chat_message()
 """
 
+# ============================================================
+# ЛОГИКА
+# ============================================================
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -203,13 +233,14 @@ class MainScreen(Screen):
         self.ids.btn_tab_history.background_color = (0.4, 0.4, 0.45, 1)
         self.ids.btn_tab_chat.background_color = (0.4, 0.4, 0.45, 1)
         
-        # Подсветка активной
+        # Подсветка
         if name == 'new': self.ids.btn_tab_new.background_color = (0.15, 0.45, 0.85, 1)
         elif name == 'history': 
             self.ids.btn_tab_history.background_color = (0.15, 0.45, 0.85, 1)
             self.load_history()
         elif name == 'chat': self.ids.btn_tab_chat.background_color = (0.15, 0.45, 0.85, 1)
 
+    # --- РАБОТА С ТЕКСТОМ И ФОТО ---
     def load_history(self):
         container = self.ids.history_container
         container.clear_widgets()
@@ -257,6 +288,14 @@ class MainScreen(Screen):
         self.ids.photo_output.text = text
         self.ids.photo_status.text = status
 
+    def save_manual_text(self):
+        text = self.ids.manual_text_input.text.strip()
+        if text:
+            save_note(text)
+            self.ids.manual_text_input.text = ''
+            self.ids.photo_status.text = 'Текст сохранен в Историю!'
+
+    # --- ЧАТ ---
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
@@ -293,12 +332,35 @@ class MainScreen(Screen):
         self.add_chat_bubble(answer, is_user=False)
 
     def add_chat_bubble(self, text, is_user):
+        # Создаем контейнер для пузыря
+        bubble_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+        
+        # Текст
         lbl = Label(text=text, size_hint_y=None, text_size=(dp(300), None), 
                     halign='right' if is_user else 'left', valign='top', 
                     color=(0, 0, 0, 1) if is_user else (0, 0, 0.5, 1))
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
-        self.ids.chat_container.add_widget(lbl)
+        bubble_box.add_widget(lbl)
+
+        # Кнопка копирования для ответа бота
+        if not is_user:
+            copy_btn = Button(text='Копировать ответ', size_hint_y=None, height=dp(35), 
+                              background_normal='', background_color=(0.8, 0.85, 0.9, 1), color=(0.1, 0.1, 0.1, 1), font_size='12sp')
+            copy_btn.bind(on_release=lambda x: self.copy_text(text))
+            bubble_box.add_widget(copy_btn)
+
+        bubble_box.height = lbl.height + (dp(40) if not is_user else dp(5))
+        self.ids.chat_container.add_widget(bubble_box)
+        
+        # Анимация плавного появления
+        bubble_box.opacity = 0
+        Animation(opacity=1, d=0.3).start(bubble_box)
         Clock.schedule_once(lambda dt: setattr(self.ids.chat_container, 'height', self.ids.chat_container.minimum_height), 0.1)
+
+    def copy_text(self, text):
+        from kivy.core.clipboard import Clipboard
+        Clipboard.copy(text)
+        # Можно добавить всплывающее уведомление, но пока просто копируем
 
 def save_note(text):
     try:
