@@ -7,7 +7,6 @@ on:
 
 jobs:
   build-android:
-    # ВОТ ГЛАВНЫЙ ФИКС: Принудительно используем 22.04!
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
@@ -27,18 +26,38 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          # Для 22.04 libtinfo5 существует, оставляем его
           sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev libstdc++6
+
+      # === ГЛАВНЫЙ ФИКС ДЛЯ УСКОРЕНИЯ ===
+      # Кешируем папки с Python, NDK и SDK. Если buildozer.spec не менялся, 
+      # он возьмет готовые файлы и не будет компилировать Python заново.
+      - name: Cache Buildozer global directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
+
+      # Кеш для Gradle (ускоряет упаковку в APK)
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Install Buildozer
         run: |
           pip install --upgrade pip
           pip install buildozer Cython==0.29.33 virtualenv
 
-      - name: Clean everything
+      # Чистим только папку bin, чтобы не скачивать старый APK
+      - name: Clean bin
         run: |
-          rm -rf .buildozer
-          rm -rf ~/.buildozer
           rm -rf bin
 
       - name: Build with Buildozer
