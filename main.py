@@ -6,27 +6,20 @@ from datetime import datetime
 from kivy.app import App
 from kivy.clock import Clock, mainthread
 from kivy.lang import Builder
-from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition  # <-- ВОТ ОН, СПАСИТЕЛЬ!
+from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
+from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
-from kivy.utils import platform, get_color_from_hex
+from kivy.utils import platform
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
 import requests
-
-# ============================================================
-# ИМПОРТЫ ДЛЯ ANDROID (Pyjnius)
-# ============================================================
-if platform == 'android':
-    from jnius import autoclass, cast
-    from android import mActivity, activity
-    from android.permissions import request_permissions, Permission
 
 # ============================================================
 # НАСТРОЙКИ
@@ -35,19 +28,18 @@ OCR_API_KEY = "K86772432188957"
 GROQ_API_KEY = "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"
 
 # ============================================================
-# ПУТИ
+# БЕЗОПАСНЫЕ ПУТИ (Только личная папка приложения)
 # ============================================================
-def get_data_path(folder_name):
-    if platform == 'android':
-        from android.storage import app_storage_path
-        base = app_storage_path()
-    else:
-        base = os.getcwd()
-    path = os.path.join(base, folder_name)
-    os.makedirs(path, exist_ok=True)
-    return path
-
-NOTES_FOLDER = get_data_path("notes")
+def get_data_path():
+    try:
+        # App.get_running_app().user_data_dir - это единственная папка, 
+        # куда Android разрешает писать без запроса прав
+        base = App.get_running_app().user_data_dir
+        path = os.path.join(base, "notes")
+        os.makedirs(path, exist_ok=True)
+        return path
+    except:
+        return "."
 
 # ============================================================
 # КАСТОМНЫЕ КНОПКИ
@@ -125,74 +117,34 @@ KV = """
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: dp(10)
-                    BoxLayout:
+                    TabButton:
+                        text: 'Загрузить фото/файл'
                         size_hint_y: None
-                        height: dp(40)
-                        spacing: dp(8)
-                        TabButton:
-                            id: btn_sub_photo
-                            text: 'Файл'
-                            on_release: root.switch_subtab('photo')
-                        TabButton:
-                            id: btn_sub_text
-                            text: 'Текст'
-                            on_release: root.switch_subtab('text')
-                            
-                    ScreenManager:
-                        id: subtab_manager
-                        transition: SlideTransition(direction='left', duration=0.2)
-                        
-                        Screen:
-                            name: 'photo'
-                            BoxLayout:
-                                orientation: 'vertical'
-                                spacing: dp(10)
-                                TabButton:
-                                    text: 'Загрузить фото/файл'
-                                    size_hint_y: None
-                                    height: dp(60)
-                                    bg_color_normal: (0.55, 0.3, 0.8, 1)
-                                    bg_color_active: (0.55, 0.3, 0.8, 1)
-                                    on_release: root.open_file_chooser('photo')
-                                Label:
-                                    id: photo_status
-                                    text: 'Текст сохранится автоматически'
-                                    size_hint_y: None
-                                    height: dp(30)
-                                    color: 0.4, 0.4, 0.45, 1
-                                ScrollView:
-                                    Label:
-                                        id: photo_output
-                                        text: 'Здесь появится текст...'
-                                        size_hint_y: None
-                                        height: self.texture_size[1]
-                                        text_size: self.width, None
-                                        color: 0.1, 0.15, 0.2, 1
-                                TabButton:
-                                    text: 'Копировать'
-                                    size_hint_y: None
-                                    height: dp(50)
-                                    bg_color_normal: (0.2, 0.6, 0.4, 1)
-                                    bg_color_active: (0.2, 0.6, 0.4, 1)
-                                    on_release: root.copy_photo_text()
-                        Screen:
-                            name: 'text'
-                            BoxLayout:
-                                orientation: 'vertical'
-                                spacing: dp(10)
-                                TextInput:
-                                    id: manual_input
-                                    hint_text: 'Введите текст...'
-                                    multiline: True
-                                    background_color: 1, 1, 1, 1
-                                    foreground_color: 0.1, 0.15, 0.2, 1
-                                TabButton:
-                                    text: 'Сохранить'
-                                    size_hint_y: None
-                                    height: dp(55)
-                                    bg_color_normal: (0.55, 0.3, 0.8, 1)
-                                    bg_color_active: (0.55, 0.3, 0.8, 1)
-                                    on_release: root.process_manual_text()
+                        height: dp(60)
+                        bg_color_normal: (0.55, 0.3, 0.8, 1)
+                        bg_color_active: (0.55, 0.3, 0.8, 1)
+                        on_release: root.open_file_chooser('photo')
+                    Label:
+                        id: photo_status
+                        text: 'Текст сохранится автоматически'
+                        size_hint_y: None
+                        height: dp(30)
+                        color: 0.4, 0.4, 0.45, 1
+                    ScrollView:
+                        Label:
+                            id: photo_output
+                            text: 'Здесь появится текст...'
+                            size_hint_y: None
+                            height: self.texture_size[1]
+                            text_size: self.width, None
+                            color: 0.1, 0.15, 0.2, 1
+                    TabButton:
+                        text: 'Копировать'
+                        size_hint_y: None
+                        height: dp(50)
+                        bg_color_normal: (0.2, 0.6, 0.4, 1)
+                        bg_color_active: (0.2, 0.6, 0.4, 1)
+                        on_release: root.copy_photo_text()
 
             Screen:
                 name: 'history'
@@ -208,13 +160,6 @@ KV = """
                         background_color: 1, 1, 1, 1
                         foreground_color: 0.1, 0.15, 0.2, 1
                         on_text: root.filter_history(self.text)
-                    TabButton:
-                        text: 'Обновить'
-                        size_hint_y: None
-                        height: dp(40)
-                        bg_color_normal: (0.15, 0.45, 0.85, 1)
-                        bg_color_active: (0.15, 0.45, 0.85, 1)
-                        on_release: root.load_history()
                     ScrollView:
                         BoxLayout:
                             id: history_container
@@ -237,7 +182,7 @@ KV = """
                         on_release: root.open_file_chooser('learn')
                     Label:
                         id: learn_status
-                        text: 'Загрузите конспект, и ИИ составит план'
+                        text: 'Загрузите конспект'
                         size_hint_y: None
                         height: dp(30)
                         color: 0.4, 0.4, 0.45, 1
@@ -261,7 +206,7 @@ KV = """
                             foreground_color: 0.1, 0.15, 0.2, 1
                             on_text_validate: root.send_learn_message()
                         TabButton:
-                            text: 'Ответить'
+                            text: 'Ответ'
                             size_hint_x: None
                             width: dp(90)
                             bg_color_normal: (0.15, 0.45, 0.85, 1)
@@ -299,13 +244,6 @@ KV = """
                             bg_color_normal: (0.15, 0.45, 0.85, 1)
                             bg_color_active: (0.15, 0.45, 0.85, 1)
                             on_release: root.send_chat_message()
-                    TabButton:
-                        text: 'Очистить диалог'
-                        size_hint_y: None
-                        height: dp(40)
-                        bg_color_normal: (0.85, 0.25, 0.25, 1)
-                        bg_color_active: (0.85, 0.25, 0.25, 1)
-                        on_release: root.clear_chat()
 """
 
 # ============================================================
@@ -319,13 +257,15 @@ class MainScreen(Screen):
         self.learn_history = []
         self.learn_context = ""
         self.all_notes = []
-        self._android_result_callback = None
         self.file_picker_target = 'photo'
-        Clock.schedule_once(self.init_colors, 0.1)
+        
+        # Инициализируем папку только после полной загрузки приложения
+        Clock.schedule_once(self.setup_app, 0.5)
 
-    def init_colors(self, dt):
+    def setup_app(self, dt):
+        global NOTES_FOLDER
+        NOTES_FOLDER = get_data_path()
         self.switch_tab('new')
-        self.switch_subtab('photo')
 
     def switch_tab(self, name):
         self.ids.content_manager.current = name
@@ -335,58 +275,41 @@ class MainScreen(Screen):
         self.ids.btn_tab_chat.set_active(name == 'chat')
         if name == 'history': self.load_history()
 
-    def switch_subtab(self, name):
-        self.ids.subtab_manager.current = name
-        self.ids.btn_sub_photo.set_active(name == 'photo')
-        self.ids.btn_sub_text.set_active(name == 'text')
-
     def open_file_chooser(self, target='photo'):
         self.file_picker_target = target
-        if platform == 'android':
-            self._open_android_file_picker()
-        else:
-            self._open_desktop_file_chooser()
-
-    def _open_android_file_picker(self):
-        try:
-            Intent = autoclass('android.content.Intent')
-            intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.setType('*/*')
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
-            chooser = Intent.createChooser(intent, cast('java.lang.CharSequence', 'Выберите файл'))
-            if self._android_result_callback is None:
-                self._android_result_callback = FilePickerResult(self)
-                activity.bind(on_activity_result=self._android_result_callback.on_activity_result)
-            mActivity.startActivityForResult(chooser, 1001)
-        except Exception as e:
-            print(f'Ошибка выбора файла: {e}')
-
-    def _open_desktop_file_chooser(self):
-        from kivy.uix.filechooser import FileChooserListView
         content = BoxLayout(orientation='vertical')
-        filechooser = FileChooserListView(path=os.path.expanduser("~"))
+        
+        # Стандартный выбор файла Kivy (без вылетов)
+        # Ищем в папке Загрузки, если нет - в корне
+        start_path = "/storage/emulated/0/Download"
+        if not os.path.exists(start_path):
+            start_path = "/storage/emulated/0/"
+            
+        filechooser = FileChooserListView(path=start_path, filters=['*.png', '*.jpg', '*.jpeg', '*.txt'])
         content.add_widget(filechooser)
+        
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
-        btn_cancel = Button(text='Отмена')
+        btn_cancel = Button(text='Отмена', background_color=(0.7, 0.7, 0.7, 1))
         btn_open = Button(text='Открыть', background_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
         content.add_widget(btn_box)
+        
         popup = Popup(title='Выберите файл', content=content, size_hint=(0.95, 0.95))
+        
         def cancel(*_): popup.dismiss()
         def open_file(*_):
             if filechooser.selection:
                 popup.dismiss()
-                self.on_file_selected(filechooser.selection[0])
+                path = filechooser.selection[0]
+                if self.file_picker_target == 'learn':
+                    self.process_learn_material(path)
+                else:
+                    self.process_photo(path)
+                    
         btn_cancel.bind(on_release=cancel)
         btn_open.bind(on_release=open_file)
         popup.open()
-
-    def on_file_selected(self, path):
-        if self.file_picker_target == 'learn':
-            self.process_learn_material(path)
-        else:
-            self.process_photo(path)
 
     def process_photo(self, path):
         self.ids.photo_status.text = 'Обработка...'
@@ -406,13 +329,6 @@ class MainScreen(Screen):
         self.current_photo_text = text
         self.ids.photo_output.text = text
         self.ids.photo_status.text = status
-
-    def process_manual_text(self):
-        text = self.ids.manual_input.text.strip()
-        if not text: return
-        save_note(text)
-        self.ids.manual_input.text = ''
-        self.ids.manual_status.text = 'Сохранено!'
 
     def copy_photo_text(self):
         if self.current_photo_text:
@@ -566,33 +482,6 @@ class MainScreen(Screen):
         from kivy.core.clipboard import Clipboard
         Clipboard.copy(text)
 
-    def clear_chat(self):
-        self.chat_history = []
-        self.ids.chat_container.clear_widgets()
-
-# ============================================================
-# ОБРАБОТЧИК РЕЗУЛЬТАТА ANDROID
-# ============================================================
-if platform == 'android':
-    class FilePickerResult:
-        def __init__(self, screen):
-            self.screen = screen
-        def on_activity_result(self, requestCode, resultCode, intent):
-            if requestCode == 1001 and intent is not None:
-                try:
-                    data = intent.getData()
-                    if data is not None:
-                        path = self._get_path_from_uri(data)
-                        if path:
-                            Clock.schedule_once(lambda dt: self.screen.on_file_selected(path), 0)
-                except Exception as e:
-                    print(f"Ошибка файла: {e}")
-        def _get_path_from_uri(self, uri):
-            try:
-                return uri.toString()
-            except:
-                return None
-
 # ============================================================
 # API И ХРАНЕНИЕ
 # ============================================================
@@ -610,8 +499,6 @@ def clean_text(raw_text):
 def recognize_photo(filepath):
     url = "https://api.ocr.space/parse/image"
     payload = {'apikey': OCR_API_KEY, 'language': 'rus', 'scale': 'true'}
-    if filepath.startswith('content://'):
-        raise Exception("Прямая загрузка по content:// не поддерживается. Выберите из папки 'Загрузки'.")
     with open(filepath, 'rb') as f:
         resp = requests.post(url, data=payload, files={'file': f}, timeout=90)
     result = resp.json()
@@ -641,7 +528,9 @@ def get_all_notes():
     if not os.path.exists(NOTES_FOLDER): return notes
     for fname in sorted(os.listdir(NOTES_FOLDER), reverse=True):
         if fname.endswith('.json'):
-            with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: notes.append(json.load(f))
+            try:
+                with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: notes.append(json.load(f))
+            except: pass
     return notes
 
 def find_relevant_notes(question):
@@ -688,10 +577,6 @@ def answer_question(messages):
 # ЗАПУСК
 # ============================================================
 class NotesApp(App):
-    def on_start(self):
-        if platform == 'android':
-            request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
-
     def build(self):
         Builder.load_string(KV)
         sm = ScreenManager()
