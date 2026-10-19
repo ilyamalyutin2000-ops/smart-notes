@@ -6,26 +6,21 @@ import base64
 import ssl
 import urllib.request
 from datetime import datetime
-
-from kivymd.app import MDApp
-from kivymd.uix.screen import MDScreen
-from kivymd.uix.screenmanager import MDScreenManager
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.button import MDRaisedButton, MDIconButton, MDFlatButton
-from kivymd.uix.label import MDLabel
-from kivymd.uix.textfield import MDTextField
-from kivymd.uix.card import MDCard
-from kivymd.uix.scrollview import MDScrollView
-from kivymd.uix.dialog import MDDialog
-from kivymd.uix.list import MDList, OneLineListItem
-from kivymd.uix.toolbar import MDTopAppBar
-
+from kivy.app import App
 from kivy.clock import Clock, mainthread
+from kivy.lang import Builder
+from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.label import Label
+from kivy.uix.button import Button
+from kivy.uix.textinput import TextInput
+from kivy.uix.popup import Popup
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
+from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
-from kivy.lang import Builder
 
 # ============================================================
 # НАСТРОЙКА
@@ -43,13 +38,13 @@ NOTES_FOLDER = ""
 def init_storage():
     global NOTES_FOLDER
     try:
-        base = MDApp.get_running_app().user_data_dir
+        base = App.get_running_app().user_data_dir
         NOTES_FOLDER = os.path.join(base, "notes")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
     except: NOTES_FOLDER = "."
 
 # ============================================================
-# ЗАПРОСЫ
+# БЕЗОПАСНЫЙ ЗАПРОС
 # ============================================================
 def safe_url_request(url, json_data=None, headers=None):
     try:
@@ -63,158 +58,223 @@ def safe_url_request(url, json_data=None, headers=None):
         return f"Ошибка сети: {str(e)}"
 
 # ============================================================
-# KV РАЗМЕТКА (Дизайн)
+# KV РАЗМЕТКА (Стиль Telegram)
 # ============================================================
 KV = """
+#:import SlideTransition kivy.uix.screenmanager.SlideTransition
+
+<ChatBubble@BoxLayout>:
+    orientation: 'vertical'
+    size_hint_y: None
+    padding: dp(10)
+    spacing: dp(5)
+    canvas.before:
+        Color:
+            rgba: root.bg_color if hasattr(root, 'bg_color') else (1,1,1,1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [15, 15, 0, 15] if root.is_user else [15, 15, 15, 0]
+
 <MainScreen>:
-    MDBoxLayout:
+    BoxLayout:
         orientation: 'vertical'
         
-        MDTopAppBar:
-            title: "Умный конспект"
-            elevation: 4
-            right_action_items: [["history", lambda x: root.switch_tab('history')], ["book-open-variant", lambda x: root.switch_tab('learn')]]
-            
-        MDBoxLayout:
+        # Экран контента
+        ScreenManager:
             id: content_manager
-            # Тут будет меняться контент
+            transition: SlideTransition(direction='left', duration=0.2)
             
-        MDBottomNavigation:
-            panel_color: 1, 1, 1, 1
-            
-            MDBottomNavigationItem:
+            # === ЭКРАН ЧАТА ===
+            Screen:
                 name: 'chat'
-                text: 'Чат'
-                icon: 'chat'
-                on_tab_press: root.switch_tab('chat')
-                
-                MDBoxLayout:
+                BoxLayout:
                     orientation: 'vertical'
-                    padding: dp(10)
                     
-                    MDScrollView:
+                    # Заголовок
+                    Label:
+                        text: 'Чат с ИИ'
+                        size_hint_y: None
+                        height: dp(50)
+                        font_size: '20sp'
+                        bold: True
+                        color: 0.15, 0.45, 0.85, 1
+                        
+                    # История сообщений
+                    ScrollView:
                         id: chat_scroll
-                        MDBoxLayout:
+                        BoxLayout:
                             id: chat_container
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
+                            padding: dp(10)
                             spacing: dp(10)
-                    
-                    MDBoxLayout:
+                            
+                    # Поле ввода
+                    BoxLayout:
                         size_hint_y: None
                         height: dp(60)
+                        padding: dp(10)
                         spacing: dp(10)
                         
-                        MDTextField:
+                        TextInput:
                             id: chat_input
-                            hint_text: 'Введите сообщение...'
-                            mode: "rectangle"
+                            hint_text: 'Написать сообщение...'
+                            multiline: False
+                            font_size: '16sp'
+                            padding: dp(15), dp(15)
                             on_text_validate: root.send_chat_message()
                             
-                        MDIconButton:
-                            icon: 'send'
-                            theme_icon_color: "Custom"
-                            icon_color: 0.15, 0.45, 0.85, 1
+                        Button:
+                            text: '➤'
+                            size_hint_x: None
+                            width: dp(60)
+                            font_size: '20sp'
+                            background_normal: ''
+                            background_color: 0.15, 0.45, 0.85, 1
                             on_release: root.send_chat_message()
 
-            MDBottomNavigationItem:
+            # === ЭКРАН ЗАГРУЗКИ ===
+            Screen:
                 name: 'new'
-                text: 'Загрузка'
-                icon: 'plus-circle'
-                on_tab_press: root.switch_tab('new')
-                
-                MDBoxLayout:
+                BoxLayout:
                     orientation: 'vertical'
-                    padding: dp(15)
-                    spacing: dp(15)
+                    padding: dp(20)
+                    spacing: dp(20)
                     
-                    MDLabel:
-                        text: "Загрузите фото конспекта или введите текст"
-                        halign: "center"
-                        theme_text_color: "Secondary"
+                    Label:
+                        text: 'Загрузка конспекта'
+                        size_hint_y: None
+                        height: dp(40)
+                        font_size: '22sp'
+                        bold: True
                         
-                    MDRaisedButton:
-                        text: "Открыть проводник"
-                        pos_hint: {"center_x": .5}
-                        on_release: root.open_system_file_picker()
-                        
-                    MDTextField:
+                    TextInput:
                         id: photo_path
-                        hint_text: 'Путь к файлу'
-                        mode: "rectangle"
+                        hint_text: 'Путь к фото (напр. /storage/emulated/0/Download/photo.jpg)'
+                        size_hint_y: None
+                        height: dp(50)
+                        multiline: False
                         
-                    MDTextField:
+                    Button:
+                        text: 'Распознать фото'
+                        size_hint_y: None
+                        height: dp(60)
+                        background_normal: ''
+                        background_color: 0.55, 0.3, 0.8, 1
+                        on_release: root.process_photo_by_path()
+                        
+                    Label:
+                        id: photo_status
+                        text: 'Или введите текст ниже'
+                        size_hint_y: None
+                        height: dp(30)
+                        color: 0.5, 0.5, 0.5, 1
+                        
+                    TextInput:
                         id: manual_text
-                        hint_text: 'Введите текст вручную...'
-                        mode: "rectangle"
+                        hint_text: 'Введите конспект вручную...'
                         multiline: True
+                        size_hint_y: 1
                         
-                    MDRaisedButton:
-                        text: "Сохранить"
-                        pos_hint: {"center_x": .5}
+                    Button:
+                        text: 'Сохранить текст'
+                        size_hint_y: None
+                        height: dp(50)
+                        background_normal: ''
+                        background_color: 0.2, 0.6, 0.4, 1
                         on_release: root.save_manual_text()
 
-            MDBottomNavigationItem:
-                name: 'history'
-                text: 'История'
-                icon: 'history'
-                on_tab_press: root.switch_tab('history')
-                
-                MDScrollView:
-                    MDList:
-                        id: history_list
-
-            MDBottomNavigationItem:
+            # === ЭКРАН ОБУЧЕНИЯ ===
+            Screen:
                 name: 'learn'
-                text: 'Обучение'
-                icon: 'book-open-variant'
-                on_tab_press: root.switch_tab('learn')
-                
-                MDBoxLayout:
+                BoxLayout:
                     orientation: 'vertical'
-                    padding: dp(15)
-                    spacing: dp(15)
+                    padding: dp(10)
+                    spacing: dp(10)
                     
-                    MDLabel:
-                        text: "ИИ-Учитель"
-                        font_style: "H4"
-                        halign: "center"
+                    Label:
+                        text: 'ИИ-Учитель'
+                        size_hint_y: None
+                        height: dp(40)
+                        font_size: '22sp'
+                        bold: True
+                        color: 0.55, 0.3, 0.8, 1
                         
-                    MDRaisedButton:
-                        text: "Загрузить материал для плана"
-                        pos_hint: {"center_x": .5}
+                    Button:
+                        text: 'Загрузить материал для плана'
+                        size_hint_y: None
+                        height: dp(55)
+                        background_normal: ''
+                        background_color: 0.2, 0.6, 0.4, 1
                         on_release: root.process_learn_material()
                         
-                    MDScrollView:
+                    ScrollView:
                         id: learn_scroll
-                        MDBoxLayout:
+                        BoxLayout:
                             id: learn_container
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
                             spacing: dp(10)
                             
-                    MDBoxLayout:
+                    BoxLayout:
                         size_hint_y: None
                         height: dp(60)
                         spacing: dp(10)
                         
-                        MDTextField:
+                        TextInput:
                             id: learn_input
                             hint_text: 'Ваш ответ учителю...'
-                            mode: "rectangle"
+                            multiline: False
                             on_text_validate: root.send_learn_message()
                             
-                        MDIconButton:
-                            icon: 'send'
+                        Button:
+                            text: '➤'
+                            size_hint_x: None
+                            width: dp(60)
+                            background_normal: ''
+                            background_color: 0.55, 0.3, 0.8, 1
                             on_release: root.send_learn_message()
+
+        # === НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ (Как в Telegram) ===
+        BoxLayout:
+            size_hint_y: None
+            height: dp(60)
+            padding: dp(5), dp(5)
+            spacing: dp(5)
+            canvas.before:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
+                    
+            Button:
+                text: '💬\\nЧат'
+                font_size: '10sp'
+                background_normal: ''
+                background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'chat' else 0.8, 0.8, 0.8, 1
+                on_release: root.ids.content_manager.current = 'chat'
+            Button:
+                text: '➕\\nЗагрузка'
+                font_size: '10sp'
+                background_normal: ''
+                background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'new' else 0.8, 0.8, 0.8, 1
+                on_release: root.ids.content_manager.current = 'new'
+            Button:
+                text: '📚\\nОбучение'
+                font_size: '10sp'
+                background_normal: ''
+                background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'learn' else 0.8, 0.8, 0.8, 1
+                on_release: root.ids.content_manager.current = 'learn'
 """
 
 # ============================================================
 # ЛОГИКА
 # ============================================================
-class MainScreen(MDScreen):
+class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.chat_history = []
@@ -224,55 +284,15 @@ class MainScreen(MDScreen):
     def setup_app(self, dt):
         init_storage()
 
-    def switch_tab(self, name):
-        # Безопасное переключение экранов через нижнее меню
-        pass # MDBottomNavigation делает это автоматически
-
-    # --- ЗАГРУЗКА ФАЙЛОВ ---
-    def open_system_file_picker(self):
-        # Безопасный путь: используем стандартный Android Intent (но без вылетов)
-        try:
-            from android import mActivity
-            from jnius import autoclass, cast
-            Intent = autoclass('android.content.Intent')
-            intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.setType('*/*')
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
-            
-            # В KivyMD это не всегда работает напрямую, поэтому даем путь по умолчанию
-            self.ids.photo_path.text = "/storage/emulated/0/Download/"
-            self.show_dialog("Выберите файл вручную", "Вставьте полный путь к файлу в поле 'Путь к файлу' и нажмите Сохранить.")
-        except:
-            self.show_dialog("Ошибка", "Системный выбор файлов недоступен. Введите путь вручную.")
-
-    def show_dialog(self, title, text):
-        dialog = MDDialog(
-            title=title,
-            text=text,
-            buttons=[MDFlatButton(text="OK", on_release=lambda x: dialog.dismiss())]
-        )
-        dialog.open()
-
-    def save_manual_text(self):
-        text = self.ids.manual_text.text.strip()
-        if text:
-            save_note(text)
-            self.ids.manual_text.text = ''
-            self.show_dialog("Успех", "Текст сохранен в Историю!")
-
-    def load_history(self):
-        # Заглушка для истории (можно расширить)
-        pass
-
     # --- ЧАТ ---
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
         self.ids.chat_input.text = ''
-        self.add_chat_bubble(text, is_user=True)
+        self.add_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
         
-        loading = MDLabel(text='Думаю...', size_hint_y=None, height=dp(40), italic=True)
+        loading = Label(text='Думаю...', size_hint_y=None, height=dp(40), italic=True, color=(0.5, 0.5, 0.5, 1))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
@@ -283,57 +303,110 @@ class MainScreen(MDScreen):
                 response = safe_url_request(url, payload, headers)
                 
                 if response.startswith("Ошибка"):
-                    self.update_chat_answer(response, loading)
+                    self.update_answer(self.ids.chat_container, response, loading, is_learn=False)
                     return
                     
                 result = json.loads(response)
                 answer = result["choices"][0]["message"]["content"].strip()
-                self.update_chat_answer(answer, loading)
+                self.chat_history.append({'role': 'assistant', 'content': answer})
+                self.update_answer(self.ids.chat_container, answer, loading, is_learn=False)
             except Exception as e:
-                self.update_chat_answer(f"Ошибка: {e}", loading)
+                self.update_answer(self.ids.chat_container, f"Ошибка: {e}", loading, is_learn=False)
                 
         threading.Thread(target=worker, daemon=True).start()
 
-    @mainthread
-    def update_chat_answer(self, answer, loading_label):
-        if loading_label and loading_label.parent:
-            self.ids.chat_container.remove_widget(loading_label)
-        self.add_chat_bubble(answer, is_user=False)
-
-    def add_chat_bubble(self, text, is_user):
-        # Пузырь в стиле Telegram
-        card = MDCard(
-            orientation='vertical',
-            padding=dp(10),
-            size_hint=(None, None),
-            size=(dp(280), dp(60)),
-            pos_hint={"right": 1} if is_user else {"left": 1},
-            md_bg_color=(0.9, 0.95, 1, 1) if is_user else (1, 1, 1, 1),
-            radius=[15, 15, 0, 15] if is_user else [15, 15, 15, 0],
-            elevation=2
-        )
-        
-        lbl = MDLabel(text=text, theme_text_color="Custom", text_color=(0,0,0,1), size_hint_y=None)
-        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
-        lbl.bind(texture_size=lambda *x: setattr(card, 'height', lbl.height + dp(20)))
-        card.add_widget(lbl)
-        
-        self.ids.chat_container.add_widget(card)
-        
-        # Анимация
-        card.opacity = 0
-        Animation(opacity=1, d=0.3).start(card)
-
     # --- ОБУЧЕНИЕ ---
     def process_learn_material(self):
-        # Здесь логика загрузки файла и отправки нейросети
-        self.show_dialog("Обучение", "Функция обучения находится в разработке.")
+        self.add_bubble(self.ids.learn_container, "Материал загружен! Составляю план...", is_user=False)
+        
+        def worker():
+            try:
+                url = "https://openrouter.ai/api/v1/chat/completions"
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+                payload = json.dumps({
+                    "model": "meta-llama/llama-3-8b-instruct",
+                    "messages": [{"role": "user", "content": "Составь план обучения по программированию. Задай первый вопрос."}]
+                })
+                response = safe_url_request(url, payload, headers)
+                
+                if response.startswith("Ошибка"):
+                    self.update_answer(self.ids.learn_container, response, None, is_learn=True)
+                    return
+                    
+                result = json.loads(response)
+                answer = result["choices"][0]["message"]["content"].strip()
+                self.update_answer(self.ids.learn_container, answer, None, is_learn=True)
+            except Exception as e:
+                self.update_answer(self.ids.learn_container, f"Ошибка: {e}", None, is_learn=True)
+                
+        threading.Thread(target=worker, daemon=True).start()
 
     def send_learn_message(self):
         text = self.ids.learn_input.text.strip()
         if not text: return
         self.ids.learn_input.text = ''
-        # Логика чата с ИИ-учителем
+        self.add_bubble(self.ids.learn_container, text, is_user=True)
+        
+        def worker():
+            try:
+                url = "https://openrouter.ai/api/v1/chat/completions"
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+                payload = json.dumps({
+                    "model": "meta-llama/llama-3-8b-instruct",
+                    "messages": [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
+                })
+                response = safe_url_request(url, payload, headers)
+                
+                if response.startswith("Ошибка"):
+                    self.update_answer(self.ids.learn_container, response, None, is_learn=True)
+                    return
+                    
+                result = json.loads(response)
+                answer = result["choices"][0]["message"]["content"].strip()
+                self.update_answer(self.ids.learn_container, answer, None, is_learn=True)
+            except Exception as e:
+                self.update_answer(self.ids.learn_container, f"Ошибка: {e}", None, is_learn=True)
+                
+        threading.Thread(target=worker, daemon=True).start()
+
+    # --- ОБЩИЕ МЕТОДЫ ---
+    @mainthread
+    def update_answer(self, container, answer, loading_label, is_learn):
+        if loading_label and loading_label.parent:
+            container.remove_widget(loading_label)
+        self.add_bubble(container, answer, is_user=False)
+
+    def add_bubble(self, container, text, is_user):
+        bubble = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
+        
+        if is_user:
+            bubble.add_widget(Label(size_hint_x=0.2)) # Отступ слева
+            
+        # Сам пузырь
+        bubble_content = BoxLayout(orientation='vertical', size_hint_x=0.8, padding=dp(10), spacing=dp(5))
+        
+        # Рисуем фон пузыря
+        with bubble_content.canvas.before:
+            Color(*(0.9, 0.95, 1, 1) if is_user else (1, 1, 1, 1))
+            rect = RoundedRectangle(pos=bubble_content.pos, size=bubble_content.size, radius=[dp(15)])
+        bubble_content.bind(pos=lambda *x: setattr(rect, 'pos', bubble_content.pos))
+        bubble_content.bind(size=lambda *x: setattr(rect, 'size', bubble_content.size))
+        
+        lbl = Label(text=text, size_hint_y=None, text_size=(dp(280), None), halign='left', valign='top', color=(0,0,0,1))
+        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
+        bubble_content.add_widget(lbl)
+        
+        bubble.add_widget(bubble_content)
+        
+        if not is_user:
+            bubble.add_widget(Label(size_hint_x=0.2)) # Отступ справа
+            
+        bubble.height = lbl.height + dp(20)
+        container.add_widget(bubble)
+        
+        # Анимация
+        bubble.opacity = 0
+        Animation(opacity=1, d=0.3).start(bubble)
 
 def save_note(text):
     try:
@@ -343,12 +416,10 @@ def save_note(text):
             json.dump(data, f, ensure_ascii=False)
     except Exception as e: print(e)
 
-class NotesApp(MDApp):
+class NotesApp(App):
     def build(self):
-        self.theme_cls.primary_palette = "Blue"
-        self.theme_cls.theme_style = "Light"
         Builder.load_string(KV)
-        sm = MDScreenManager()
+        sm = ScreenManager()
         sm.add_widget(MainScreen(name='main'))
         return sm
 
