@@ -112,7 +112,8 @@ KV = """
 
         ScreenManager:
             id: content_manager
-            
+            # Анимация есть только здесь (для главных вкладок)
+            transition: SlideTransition(direction='left', duration=0.3)
             
             Screen:
                 name: 'new'
@@ -134,7 +135,7 @@ KV = """
                             
                     ScreenManager:
                         id: subtab_manager
-                        transition: SlideTransition(direction='left', duration=0.3)
+                        # УБРАЛИ transition, чтобы не было ошибки
                         
                         Screen:
                             name: 'photo'
@@ -301,7 +302,6 @@ KV = """
                         bg_color_active: (0.85, 0.25, 0.25, 1)
                         on_release: root.clear_chat()
 """
-
 # ============================================================
 # ЛОГИКА
 # ============================================================
