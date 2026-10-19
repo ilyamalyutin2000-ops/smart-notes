@@ -18,13 +18,12 @@ from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
 from kivy.utils import platform, get_color_from_hex
 from kivy.core.window import Window
-from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
 
 # ============================================================
-# НАСТРОЙКА ОКНА
+# НАСТРОЙКА ОКНА (Безопасный фон)
 # ============================================================
-Window.clearcolor = get_color_from_hex('#F4F6F9')  # Светло-серый фон
+Window.clearcolor = get_color_from_hex('#F4F6F9')
 
 # ============================================================
 # ИМПОРТЫ ANDROID
@@ -52,34 +51,6 @@ def init_storage():
         NOTES_FOLDER = os.path.join(base, "notes")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
     except: NOTES_FOLDER = "."
-
-# ============================================================
-# КРАСИВЫЕ КНОПКИ (С анимацией и закруглением)
-# ============================================================
-class ModernButton(Button):
-    def __init__(self, bg_color=(0.15, 0.45, 0.85, 1), text_color=(1, 1, 1, 1), **kwargs):
-        super().__init__(**kwargs)
-        self.background_normal = ''
-        self.background_down = ''
-        self.background_color = (0, 0, 0, 0)
-        self.bg_color = bg_color
-        self.color = text_color
-        self.current_color = bg_color
-        self.bind(pos=self.update_canvas, size=self.update_canvas)
-
-    def update_canvas(self, *args):
-        self.canvas.before.clear()
-        with self.canvas.before:
-            Color(*self.current_color)
-            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(20)])
-
-    def on_press(self):
-        # Легкое затемнение при нажатии
-        Animation(current_color=(0.1, 0.35, 0.7, 1), d=0.1).start(self)
-
-    def on_release(self):
-        # Возврат цвета
-        Animation(current_color=self.bg_color, d=0.1).start(self)
 
 # ============================================================
 # БЕЗОПАСНЫЙ СЕТЕВОЙ ЗАПРОС
@@ -152,17 +123,22 @@ KV = """
             
         BoxLayout:
             size_hint_y: None
-            height: dp(50)
+            height: dp(55)
             spacing: dp(10)
             
-            ModernButton:
+            Button:
                 id: btn_tab_new
                 text: 'Загрузка'
+                font_size: '16sp'
+                background_normal: ''
+                background_color: 0.15, 0.45, 0.85, 1
                 on_release: root.switch_tab('new')
-            ModernButton:
+            Button:
                 id: btn_tab_chat
                 text: 'Чат'
-                bg_color: (0.4, 0.4, 0.45, 1)
+                font_size: '16sp'
+                background_normal: ''
+                background_color: 0.4, 0.4, 0.45, 1
                 on_release: root.switch_tab('chat')
                 
         ScreenManager:
@@ -175,17 +151,21 @@ KV = """
                     orientation: 'vertical'
                     spacing: dp(15)
                     
-                    ModernButton:
+                    Button:
                         text: 'Загрузить фото/файл'
                         size_hint_y: None
                         height: dp(60)
-                        bg_color: (0.55, 0.3, 0.8, 1)
+                        font_size: '18sp'
+                        background_normal: ''
+                        background_color: 0.55, 0.3, 0.8, 1
                         on_release: root.open_file_chooser()
                         
                     Label:
                         id: photo_status
                         text: 'Текст сохранится автоматически'
                         color: 0.4, 0.4, 0.45, 1
+                        size_hint_y: None
+                        height: dp(30)
                         
                     ScrollView:
                         Label:
@@ -208,7 +188,7 @@ KV = """
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            spacing: dp(15)
+                            spacing: dp(10)
                             
                     BoxLayout:
                         size_hint_y: None
@@ -224,16 +204,16 @@ KV = """
                             padding: dp(15), dp(15)
                             on_text_validate: root.send_chat_message()
                             
-                        ModernButton:
+                        Button:
                             text: 'Ввод'
                             size_hint_x: None
                             width: dp(90)
+                            font_size: '16sp'
+                            background_normal: ''
+                            background_color: 0.15, 0.45, 0.85, 1
                             on_release: root.send_chat_message()
 """
 
-# ============================================================
-# ЛОГИКА
-# ============================================================
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -245,13 +225,12 @@ class MainScreen(Screen):
 
     def switch_tab(self, name):
         self.ids.content_manager.current = name
-        # Подсветка активной кнопки
         if name == 'new':
-            self.ids.btn_tab_new.bg_color = (0.15, 0.45, 0.85, 1)
-            self.ids.btn_tab_chat.bg_color = (0.4, 0.4, 0.45, 1)
+            self.ids.btn_tab_new.background_color = (0.15, 0.45, 0.85, 1)
+            self.ids.btn_tab_chat.background_color = (0.4, 0.4, 0.45, 1)
         else:
-            self.ids.btn_tab_new.bg_color = (0.4, 0.4, 0.45, 1)
-            self.ids.btn_tab_chat.bg_color = (0.15, 0.45, 0.85, 1)
+            self.ids.btn_tab_new.background_color = (0.4, 0.4, 0.45, 1)
+            self.ids.btn_tab_chat.background_color = (0.15, 0.45, 0.85, 1)
 
     def open_file_chooser(self):
         content = BoxLayout(orientation='vertical', padding=dp(10))
@@ -259,8 +238,8 @@ class MainScreen(Screen):
         content.add_widget(filechooser)
         
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
-        btn_cancel = ModernButton(text='Отмена', bg_color=(0.7, 0.7, 0.7, 1), on_release=lambda x: popup.dismiss())
-        btn_open = ModernButton(text='Открыть', bg_color=(0.2, 0.6, 0.4, 1))
+        btn_cancel = Button(text='Отмена', background_normal='', background_color=(0.7, 0.7, 0.7, 1))
+        btn_open = Button(text='Открыть', background_normal='', background_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
         content.add_widget(btn_box)
@@ -273,6 +252,7 @@ class MainScreen(Screen):
                 self.ids.photo_status.text = 'Обработка...'
                 threading.Thread(target=self.process_photo, args=(selection[0],), daemon=True).start()
                 
+        btn_cancel.bind(on_release=lambda x: popup.dismiss())
         btn_open.bind(on_release=lambda x: process_file(filechooser.selection))
         popup.open()
 
@@ -347,29 +327,27 @@ class MainScreen(Screen):
         self.add_chat_bubble(answer, is_user=False)
 
     def add_chat_bubble(self, text, is_user):
-        # Красивые пузыри с закруглением и анимацией
-        msg_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+        # Безопасный пузырь (просто Label с отступами и цветом)
+        msg_layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
         
-        bg = (0.9, 0.95, 1, 1) if is_user else (1, 1, 1, 1)
-        text_color = (0, 0, 0, 1) if is_user else (0.1, 0.1, 0.1, 1)
-        
+        # Текст
         lbl = Label(text=text, size_hint_y=None, text_size=(dp(300), None), 
                     halign='right' if is_user else 'left', valign='top', 
-                    color=text_color, markup=True)
+                    color=(0, 0, 0, 1) if is_user else (0, 0, 0.5, 1), markup=True)
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
         
-        with lbl.canvas.before:
-            Color(*bg)
-            rect = RoundedRectangle(pos=lbl.pos, size=lbl.size, radius=[dp(15)])
-        lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
-        lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
+        # Добавляем отступы (как в пузыре)
+        if is_user:
+            msg_layout.add_widget(Label(size_hint_x=0.2)) # Пустое место слева
+            msg_layout.add_widget(lbl)
+        else:
+            msg_layout.add_widget(lbl)
+            msg_layout.add_widget(Label(size_hint_x=0.2)) # Пустое место справа
+
+        msg_layout.height = lbl.height + dp(10)
+        self.ids.chat_container.add_widget(msg_layout)
         
-        msg_box.add_widget(lbl)
-        self.ids.chat_container.add_widget(msg_box)
-        
-        # Анимация появления
-        msg_box.opacity = 0
-        Animation(opacity=1, d=0.3).start(msg_box)
+        # Автоматическая прокрутка вниз
         Clock.schedule_once(lambda dt: setattr(self.ids.chat_container, 'height', self.ids.chat_container.minimum_height), 0.1)
 
 def save_note(text):
