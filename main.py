@@ -112,7 +112,7 @@ KV = """
 
         ScreenManager:
             id: content_manager
-            transition: SlideTransition(direction='left', duration=0.3)
+            
             
             Screen:
                 name: 'new'
@@ -671,3 +671,6 @@ class NotesApp(App):
 
 if __name__ == "__main__":
     NotesApp().run()
+
+
+
