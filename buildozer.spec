@@ -6,11 +6,12 @@ source.dir = .
 source.include_exts = py
 version = 0.1
 
-# Жестко фиксируем версии, чтобы ничего не сломалось
-requirements = python3==3.9.16,hostpython3==3.9.16,kivy==2.3.0
+# Только базовый Kivy (никаких requests, jnius и т.д.)
+requirements = python3,kivy
 
 orientation = portrait
 fullscreen = 0
+
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
