@@ -26,7 +26,7 @@ from kivy.core.window import Window
 # ============================================================
 Window.clearcolor = get_color_from_hex('#F4F6F9')
 
-# ИГНОРИРУЕМ ОШИБКИ SSL (Чтобы Android не блокировал HTTPS)
+# Игнорируем SSL (чтобы Android не блокировал сеть)
 ssl_context = ssl.create_default_context()
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
@@ -47,13 +47,12 @@ def init_storage():
     except: NOTES_FOLDER = "."
 
 # ============================================================
-# СЕТЕВОЙ ЗАПРОС (С защитой от вылетов)
+# БЕЗОПАСНЫЙ СЕТЕВОЙ ЗАПРОС
 # ============================================================
 def safe_url_request(url, json_data=None, headers=None):
     try:
         data = json_data.encode('utf-8') if json_data else None
         req = urllib.request.Request(url, data=data, headers=headers or {}, method='POST' if data else 'GET')
-        
         with urllib.request.urlopen(req, context=ssl_context, timeout=20) as response:
             return response.read().decode('utf-8')
     except urllib.error.HTTPError as e:
@@ -63,7 +62,7 @@ def safe_url_request(url, json_data=None, headers=None):
         return f"Ошибка сети: {str(e)}"
 
 # ============================================================
-# ИНТЕРФЕЙС
+# ИНТЕРФЕЙС (С ТВОИМ ФИКСОМ)
 # ============================================================
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
@@ -175,6 +174,9 @@ KV = """
                             on_release: root.send_chat_message()
 """
 
+# ============================================================
+# ЛОГИКА
+# ============================================================
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
