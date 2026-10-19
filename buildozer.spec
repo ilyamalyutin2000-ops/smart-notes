@@ -7,7 +7,7 @@ source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
 # Возвращаем requests и jnius
-requirements = python3,kivy,requests,jnius
+requirements = python3,kivy,requests
 
 orientation = portrait
 fullscreen = 0
