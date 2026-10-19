@@ -7,7 +7,7 @@ from datetime import datetime
 from kivy.app import App
 from kivy.clock import Clock, mainthread
 from kivy.lang import Builder
-from kivy.uix.screenmanager import ScreenManager, Screen
+from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
@@ -16,15 +16,24 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
-from kivy.utils import platform
+from kivy.utils import platform, get_color_from_hex
+from kivy.core.window import Window
+from kivy.graphics import Color, RoundedRectangle
+from kivy.animation import Animation
 
 # ============================================================
-# ИМПОРТЫ ANDROID (Для безопасного интернета)
+# НАСТРОЙКА ОКНА
+# ============================================================
+Window.clearcolor = get_color_from_hex('#F4F6F9')  # Светло-серый фон
+
+# ============================================================
+# ИМПОРТЫ ANDROID
 # ============================================================
 if platform == 'android':
     from jnius import autoclass, cast
     from android import mActivity
     URL = autoclass('java.net.URL')
+    HttpURLConnection = autoclass('java.net.HttpURLConnection')
     InputStreamReader = autoclass('java.io.InputStreamReader')
     BufferedReader = autoclass('java.io.BufferedReader')
     StringBuilder = autoclass('java.lang.StringBuilder')
@@ -45,22 +54,50 @@ def init_storage():
     except: NOTES_FOLDER = "."
 
 # ============================================================
-# БЕЗОПАСНЫЙ СЕТЕВОЙ ЗАПРОС ЧЕРЕЗ JAVA
+# КРАСИВЫЕ КНОПКИ (С анимацией и закруглением)
+# ============================================================
+class ModernButton(Button):
+    def __init__(self, bg_color=(0.15, 0.45, 0.85, 1), text_color=(1, 1, 1, 1), **kwargs):
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_down = ''
+        self.background_color = (0, 0, 0, 0)
+        self.bg_color = bg_color
+        self.color = text_color
+        self.current_color = bg_color
+        self.bind(pos=self.update_canvas, size=self.update_canvas)
+
+    def update_canvas(self, *args):
+        self.canvas.before.clear()
+        with self.canvas.before:
+            Color(*self.current_color)
+            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(20)])
+
+    def on_press(self):
+        # Легкое затемнение при нажатии
+        Animation(current_color=(0.1, 0.35, 0.7, 1), d=0.1).start(self)
+
+    def on_release(self):
+        # Возврат цвета
+        Animation(current_color=self.bg_color, d=0.1).start(self)
+
+# ============================================================
+# БЕЗОПАСНЫЙ СЕТЕВОЙ ЗАПРОС
 # ============================================================
 def safe_url_request(url, json_data=None, headers=None):
     if platform != 'android':
         return "Ошибка: Этот код работает только на Android."
-    
     try:
         url_obj = URL(url)
-        conn = url_obj.openConnection()
+        conn = cast('java.net.HttpURLConnection', url_obj.openConnection())
         conn.setRequestMethod("POST" if json_data else "GET")
         conn.setDoOutput(True)
+        conn.setConnectTimeout(15000)
+        conn.setReadTimeout(15000)
         
         if headers:
             for key, val in headers.items():
                 conn.setRequestProperty(key, val)
-                
         if json_data:
             output_stream = conn.getOutputStream()
             output_stream.write(json_data.encode('utf-8'))
@@ -68,8 +105,6 @@ def safe_url_request(url, json_data=None, headers=None):
             output_stream.close()
             
         response_code = conn.getResponseCode()
-        
-        # Читаем ответ сервера, даже если это ошибка (403, 502 и т.д.)
         if response_code != 200:
             error_stream = conn.getErrorStream()
             if error_stream is not None:
@@ -93,12 +128,8 @@ def safe_url_request(url, json_data=None, headers=None):
         reader.close()
         
         res_str = str(response.toString())
-        if not res_str.strip():
-            return "Ошибка: Сервер вернул пустой ответ."
-            
-        return res_str
+        return res_str if res_str.strip() else "Ошибка: Пустой ответ."
     except Exception as e:
-        print(f"Сетевая ошибка: {e}")
         return f"Ошибка сети: {e}"
 
 # ============================================================
@@ -108,43 +139,54 @@ KV = """
 <MainScreen>:
     BoxLayout:
         orientation: 'vertical'
-        padding: dp(10)
-        spacing: dp(10)
+        padding: dp(15)
+        spacing: dp(15)
+        
         Label:
             size_hint_y: None
             height: dp(40)
             text: 'Умный конспект'
-            font_size: '22sp'
+            font_size: '24sp'
             bold: True
+            color: 0.1, 0.15, 0.2, 1
+            
         BoxLayout:
             size_hint_y: None
-            height: dp(45)
-            spacing: dp(5)
-            Button:
+            height: dp(50)
+            spacing: dp(10)
+            
+            ModernButton:
                 id: btn_tab_new
                 text: 'Загрузка'
-                background_color: 0.15, 0.45, 0.85, 1
                 on_release: root.switch_tab('new')
-            Button:
+            ModernButton:
                 id: btn_tab_chat
                 text: 'Чат'
-                background_color: 0.4, 0.4, 0.45, 1
+                bg_color: (0.4, 0.4, 0.45, 1)
                 on_release: root.switch_tab('chat')
+                
         ScreenManager:
             id: content_manager
+            transition: SlideTransition(direction='left', duration=0.3)
+            
             Screen:
                 name: 'new'
                 BoxLayout:
                     orientation: 'vertical'
-                    spacing: dp(10)
-                    Button:
+                    spacing: dp(15)
+                    
+                    ModernButton:
                         text: 'Загрузить фото/файл'
                         size_hint_y: None
                         height: dp(60)
+                        bg_color: (0.55, 0.3, 0.8, 1)
                         on_release: root.open_file_chooser()
+                        
                     Label:
                         id: photo_status
                         text: 'Текст сохранится автоматически'
+                        color: 0.4, 0.4, 0.45, 1
+                        
                     ScrollView:
                         Label:
                             id: photo_output
@@ -152,34 +194,46 @@ KV = """
                             size_hint_y: None
                             height: self.texture_size[1]
                             text_size: self.width, None
+                            color: 0.1, 0.15, 0.2, 1
+                            
             Screen:
                 name: 'chat'
                 BoxLayout:
                     orientation: 'vertical'
-                    spacing: dp(10)
+                    spacing: dp(15)
+                    
                     ScrollView:
                         BoxLayout:
                             id: chat_container
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            spacing: dp(12)
+                            spacing: dp(15)
+                            
                     BoxLayout:
                         size_hint_y: None
-                        height: dp(55)
-                        spacing: dp(8)
+                        height: dp(60)
+                        spacing: dp(10)
+                        
                         TextInput:
                             id: chat_input
                             hint_text: 'Введите вопрос...'
                             multiline: False
+                            background_color: 1, 1, 1, 1
+                            foreground_color: 0.1, 0.15, 0.2, 1
+                            padding: dp(15), dp(15)
                             on_text_validate: root.send_chat_message()
-                        Button:
+                            
+                        ModernButton:
                             text: 'Ввод'
                             size_hint_x: None
                             width: dp(90)
                             on_release: root.send_chat_message()
 """
 
+# ============================================================
+# ЛОГИКА
+# ============================================================
 class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -191,26 +245,35 @@ class MainScreen(Screen):
 
     def switch_tab(self, name):
         self.ids.content_manager.current = name
-        self.ids.btn_tab_new.background_color = (0.15, 0.45, 0.85, 1) if name == 'new' else (0.4, 0.4, 0.45, 1)
-        self.ids.btn_tab_chat.background_color = (0.15, 0.45, 0.85, 1) if name == 'chat' else (0.4, 0.4, 0.45, 1)
+        # Подсветка активной кнопки
+        if name == 'new':
+            self.ids.btn_tab_new.bg_color = (0.15, 0.45, 0.85, 1)
+            self.ids.btn_tab_chat.bg_color = (0.4, 0.4, 0.45, 1)
+        else:
+            self.ids.btn_tab_new.bg_color = (0.4, 0.4, 0.45, 1)
+            self.ids.btn_tab_chat.bg_color = (0.15, 0.45, 0.85, 1)
 
     def open_file_chooser(self):
-        content = BoxLayout(orientation='vertical')
+        content = BoxLayout(orientation='vertical', padding=dp(10))
         filechooser = FileChooserListView(path="/storage/emulated/0/Download", filters=['*.png', '*.jpg', '*.jpeg'])
         content.add_widget(filechooser)
-        btn_box = BoxLayout(size_hint_y=None, height=dp(50))
-        btn_cancel = Button(text='Отмена', on_release=lambda x: popup.dismiss())
-        btn_open = Button(text='Открыть', on_release=lambda x: process_file(filechooser.selection))
+        
+        btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        btn_cancel = ModernButton(text='Отмена', bg_color=(0.7, 0.7, 0.7, 1), on_release=lambda x: popup.dismiss())
+        btn_open = ModernButton(text='Открыть', bg_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
         content.add_widget(btn_box)
+        
         popup = Popup(title='Выберите файл', content=content, size_hint=(0.95, 0.95))
         
         def process_file(selection):
             popup.dismiss()
             if selection:
-                self.ids.photo_status.text = 'Обработка (может занять время)...'
+                self.ids.photo_status.text = 'Обработка...'
                 threading.Thread(target=self.process_photo, args=(selection[0],), daemon=True).start()
+                
+        btn_open.bind(on_release=lambda x: process_file(filechooser.selection))
         popup.open()
 
     def process_photo(self, path):
@@ -223,14 +286,11 @@ class MainScreen(Screen):
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
             
             response = safe_url_request(url, payload, headers)
-            
-            # Защита от не-JSON ответа
             if response.startswith("Ошибка"):
                 self.update_photo_result(response, 'Ошибка сервера')
                 return
                 
             result = json.loads(response)
-            
             if result.get('IsErroredOnProcessing'):
                 raise Exception(result.get('ErrorMessage'))
             text = result.get('ParsedResults', [{}])[0].get('ParsedText', '')
@@ -251,7 +311,8 @@ class MainScreen(Screen):
         self.ids.chat_input.text = ''
         self.add_chat_bubble(text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
-        loading = Label(text='Думаю...', size_hint_y=None, height=dp(40))
+        
+        loading = Label(text='Думаю...', size_hint_y=None, height=dp(40), italic=True, color=(0.5, 0.5, 0.5, 1))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
@@ -267,7 +328,6 @@ class MainScreen(Screen):
                 })
                 response = safe_url_request(url, payload, headers)
                 
-                # Защита от не-JSON ответа
                 if response.startswith("Ошибка"):
                     self.update_chat_answer(response, loading)
                     return
@@ -287,11 +347,30 @@ class MainScreen(Screen):
         self.add_chat_bubble(answer, is_user=False)
 
     def add_chat_bubble(self, text, is_user):
-        lbl = Label(text=text, size_hint_y=None, text_size=(dp(320), None), 
+        # Красивые пузыри с закруглением и анимацией
+        msg_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+        
+        bg = (0.9, 0.95, 1, 1) if is_user else (1, 1, 1, 1)
+        text_color = (0, 0, 0, 1) if is_user else (0.1, 0.1, 0.1, 1)
+        
+        lbl = Label(text=text, size_hint_y=None, text_size=(dp(300), None), 
                     halign='right' if is_user else 'left', valign='top', 
-                    color=(0,0,0,1) if is_user else (0,0,0.5,1))
+                    color=text_color, markup=True)
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
-        self.ids.chat_container.add_widget(lbl)
+        
+        with lbl.canvas.before:
+            Color(*bg)
+            rect = RoundedRectangle(pos=lbl.pos, size=lbl.size, radius=[dp(15)])
+        lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
+        lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
+        
+        msg_box.add_widget(lbl)
+        self.ids.chat_container.add_widget(msg_box)
+        
+        # Анимация появления
+        msg_box.opacity = 0
+        Animation(opacity=1, d=0.3).start(msg_box)
+        Clock.schedule_once(lambda dt: setattr(self.ids.chat_container, 'height', self.ids.chat_container.minimum_height), 0.1)
 
 def save_note(text):
     try:
