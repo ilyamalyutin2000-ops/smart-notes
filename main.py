@@ -15,11 +15,9 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
-from kivy.uix.popup import Popup
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
-from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
 
 # ============================================================
@@ -58,49 +56,27 @@ def safe_url_request(url, json_data=None, headers=None):
         return f"Ошибка сети: {str(e)}"
 
 # ============================================================
-# KV РАЗМЕТКА (Стиль Telegram)
+# ИНТЕРФЕЙС
 # ============================================================
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
-
-<ChatBubble@BoxLayout>:
-    orientation: 'vertical'
-    size_hint_y: None
-    padding: dp(10)
-    spacing: dp(5)
-    canvas.before:
-        Color:
-            rgba: root.bg_color if hasattr(root, 'bg_color') else (1,1,1,1)
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [15, 15, 0, 15] if root.is_user else [15, 15, 15, 0]
 
 <MainScreen>:
     BoxLayout:
         orientation: 'vertical'
         
-        # Экран контента
         ScreenManager:
             id: content_manager
             transition: SlideTransition(direction='left', duration=0.2)
             
-            # === ЭКРАН ЧАТА ===
+            # === ЧАТ ===
             Screen:
                 name: 'chat'
                 BoxLayout:
                     orientation: 'vertical'
+                    padding: dp(10)
+                    spacing: dp(10)
                     
-                    # Заголовок
-                    Label:
-                        text: 'Чат с ИИ'
-                        size_hint_y: None
-                        height: dp(50)
-                        font_size: '20sp'
-                        bold: True
-                        color: 0.15, 0.45, 0.85, 1
-                        
-                    # История сообщений
                     ScrollView:
                         id: chat_scroll
                         BoxLayout:
@@ -108,51 +84,39 @@ KV = """
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            padding: dp(10)
-                            spacing: dp(10)
+                            spacing: dp(8)
                             
-                    # Поле ввода
                     BoxLayout:
                         size_hint_y: None
-                        height: dp(60)
-                        padding: dp(10)
-                        spacing: dp(10)
+                        height: dp(55)
+                        spacing: dp(8)
                         
                         TextInput:
                             id: chat_input
-                            hint_text: 'Написать сообщение...'
+                            hint_text: 'Сообщение...'
                             multiline: False
-                            font_size: '16sp'
-                            padding: dp(15), dp(15)
+                            padding: dp(10), dp(10)
                             on_text_validate: root.send_chat_message()
                             
                         Button:
-                            text: '➤'
+                            text: '▶'
                             size_hint_x: None
-                            width: dp(60)
-                            font_size: '20sp'
+                            width: dp(50)
                             background_normal: ''
                             background_color: 0.15, 0.45, 0.85, 1
                             on_release: root.send_chat_message()
 
-            # === ЭКРАН ЗАГРУЗКИ ===
+            # === ЗАГРУЗКА ===
             Screen:
                 name: 'new'
                 BoxLayout:
                     orientation: 'vertical'
-                    padding: dp(20)
-                    spacing: dp(20)
+                    padding: dp(15)
+                    spacing: dp(15)
                     
-                    Label:
-                        text: 'Загрузка конспекта'
-                        size_hint_y: None
-                        height: dp(40)
-                        font_size: '22sp'
-                        bold: True
-                        
                     TextInput:
                         id: photo_path
-                        hint_text: 'Путь к фото (напр. /storage/emulated/0/Download/photo.jpg)'
+                        hint_text: 'Путь к фото'
                         size_hint_y: None
                         height: dp(50)
                         multiline: False
@@ -160,21 +124,21 @@ KV = """
                     Button:
                         text: 'Распознать фото'
                         size_hint_y: None
-                        height: dp(60)
+                        height: dp(55)
                         background_normal: ''
                         background_color: 0.55, 0.3, 0.8, 1
                         on_release: root.process_photo_by_path()
                         
                     Label:
                         id: photo_status
-                        text: 'Или введите текст ниже'
+                        text: 'Или введите текст вручную'
                         size_hint_y: None
                         height: dp(30)
-                        color: 0.5, 0.5, 0.5, 1
+                        color: 0.4, 0.4, 0.4, 1
                         
                     TextInput:
                         id: manual_text
-                        hint_text: 'Введите конспект вручную...'
+                        hint_text: 'Введите конспект...'
                         multiline: True
                         size_hint_y: 1
                         
@@ -186,24 +150,16 @@ KV = """
                         background_color: 0.2, 0.6, 0.4, 1
                         on_release: root.save_manual_text()
 
-            # === ЭКРАН ОБУЧЕНИЯ ===
+            # === ОБУЧЕНИЕ ===
             Screen:
                 name: 'learn'
                 BoxLayout:
                     orientation: 'vertical'
-                    padding: dp(10)
-                    spacing: dp(10)
+                    padding: dp(15)
+                    spacing: dp(15)
                     
-                    Label:
-                        text: 'ИИ-Учитель'
-                        size_hint_y: None
-                        height: dp(40)
-                        font_size: '22sp'
-                        bold: True
-                        color: 0.55, 0.3, 0.8, 1
-                        
                     Button:
-                        text: 'Загрузить материал для плана'
+                        text: 'Загрузить план обучения'
                         size_hint_y: None
                         height: dp(55)
                         background_normal: ''
@@ -217,55 +173,48 @@ KV = """
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            spacing: dp(10)
+                            spacing: dp(8)
                             
                     BoxLayout:
                         size_hint_y: None
-                        height: dp(60)
-                        spacing: dp(10)
+                        height: dp(55)
+                        spacing: dp(8)
                         
                         TextInput:
                             id: learn_input
-                            hint_text: 'Ваш ответ учителю...'
+                            hint_text: 'Ваш ответ...'
                             multiline: False
                             on_text_validate: root.send_learn_message()
                             
                         Button:
-                            text: '➤'
+                            text: '▶'
                             size_hint_x: None
-                            width: dp(60)
+                            width: dp(50)
                             background_normal: ''
                             background_color: 0.55, 0.3, 0.8, 1
                             on_release: root.send_learn_message()
 
-        # === НИЖНЯЯ ПАНЕЛЬ НАВИГАЦИИ (Как в Telegram) ===
+        # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
             size_hint_y: None
-            height: dp(60)
-            padding: dp(5), dp(5)
-            spacing: dp(5)
-            canvas.before:
-                Color:
-                    rgba: 1, 1, 1, 1
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
-                    
+            height: dp(55)
+            spacing: dp(2)
+            
             Button:
-                text: '💬\\nЧат'
-                font_size: '10sp'
+                text: 'Чат'
+                font_size: '14sp'
                 background_normal: ''
                 background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'chat' else 0.8, 0.8, 0.8, 1
                 on_release: root.ids.content_manager.current = 'chat'
             Button:
-                text: '➕\\nЗагрузка'
-                font_size: '10sp'
+                text: 'Загрузка'
+                font_size: '14sp'
                 background_normal: ''
                 background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'new' else 0.8, 0.8, 0.8, 1
                 on_release: root.ids.content_manager.current = 'new'
             Button:
-                text: '📚\\nОбучение'
-                font_size: '10sp'
+                text: 'Обучение'
+                font_size: '14sp'
                 background_normal: ''
                 background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'learn' else 0.8, 0.8, 0.8, 1
                 on_release: root.ids.content_manager.current = 'learn'
@@ -278,21 +227,62 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.chat_history = []
-        self.learn_history = []
         Clock.schedule_once(self.setup_app, 0.5)
 
     def setup_app(self, dt):
         init_storage()
+
+    def process_photo_by_path(self):
+        path = self.ids.photo_path.text.strip()
+        if not path:
+            self.ids.photo_status.text = "Введите путь!"
+            return
+        self.ids.photo_status.text = 'Обработка...'
+        threading.Thread(target=self.process_photo, args=(path,), daemon=True).start()
+
+    def process_photo(self, path):
+        try:
+            if not os.path.exists(path):
+                raise Exception("Файл не найден.")
+            with open(path, "rb") as f:
+                encoded = base64.b64encode(f.read()).decode('utf-8')
+            
+            url = "https://api.ocr.space/parse/image"
+            payload = f"apikey={OCR_API_KEY}&language=rus&base64Image=data:image/jpeg;base64,{encoded}"
+            headers = {"Content-Type": "application/x-www-form-urlencoded"}
+            
+            response = safe_url_request(url, payload, headers)
+            if response.startswith("Ошибка"):
+                self.update_photo_result(response, 'Ошибка')
+                return
+                
+            result = json.loads(response)
+            text = result.get('ParsedResults', [{}])[0].get('ParsedText', '')
+            self.update_photo_result(text, 'Готово!')
+            save_note(text)
+        except Exception as e:
+            self.update_photo_result(f'Ошибка: {e}', 'Ошибка')
+
+    @mainthread
+    def update_photo_result(self, text, status):
+        self.ids.photo_status.text = status
+
+    def save_manual_text(self):
+        text = self.ids.manual_text.text.strip()
+        if text:
+            save_note(text)
+            self.ids.manual_text.text = ''
+            self.ids.photo_status.text = 'Сохранено!'
 
     # --- ЧАТ ---
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
         self.ids.chat_input.text = ''
-        self.add_bubble(self.ids.chat_container, text, is_user=True)
+        self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
         
-        loading = Label(text='Думаю...', size_hint_y=None, height=dp(40), italic=True, color=(0.5, 0.5, 0.5, 1))
+        loading = Label(text='...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
@@ -303,21 +293,27 @@ class MainScreen(Screen):
                 response = safe_url_request(url, payload, headers)
                 
                 if response.startswith("Ошибка"):
-                    self.update_answer(self.ids.chat_container, response, loading, is_learn=False)
+                    self.update_chat(answer=response, loading=loading)
                     return
                     
                 result = json.loads(response)
                 answer = result["choices"][0]["message"]["content"].strip()
                 self.chat_history.append({'role': 'assistant', 'content': answer})
-                self.update_answer(self.ids.chat_container, answer, loading, is_learn=False)
+                self.update_chat(answer=answer, loading=loading)
             except Exception as e:
-                self.update_answer(self.ids.chat_container, f"Ошибка: {e}", loading, is_learn=False)
+                self.update_chat(answer=f"Ошибка: {e}", loading=loading)
                 
         threading.Thread(target=worker, daemon=True).start()
 
+    @mainthread
+    def update_chat(self, answer, loading):
+        if loading and loading.parent:
+            self.ids.chat_container.remove_widget(loading)
+        self.add_simple_bubble(self.ids.chat_container, answer, is_user=False)
+
     # --- ОБУЧЕНИЕ ---
     def process_learn_material(self):
-        self.add_bubble(self.ids.learn_container, "Материал загружен! Составляю план...", is_user=False)
+        self.add_simple_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
         
         def worker():
             try:
@@ -325,19 +321,14 @@ class MainScreen(Screen):
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
                 payload = json.dumps({
                     "model": "meta-llama/llama-3-8b-instruct",
-                    "messages": [{"role": "user", "content": "Составь план обучения по программированию. Задай первый вопрос."}]
+                    "messages": [{"role": "user", "content": "Составь план обучения. Задай первый вопрос."}]
                 })
                 response = safe_url_request(url, payload, headers)
-                
-                if response.startswith("Ошибка"):
-                    self.update_answer(self.ids.learn_container, response, None, is_learn=True)
-                    return
-                    
                 result = json.loads(response)
                 answer = result["choices"][0]["message"]["content"].strip()
-                self.update_answer(self.ids.learn_container, answer, None, is_learn=True)
+                self.update_learn(answer=answer, loading=None)
             except Exception as e:
-                self.update_answer(self.ids.learn_container, f"Ошибка: {e}", None, is_learn=True)
+                self.update_learn(answer=f"Ошибка: {e}", loading=None)
                 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -345,7 +336,7 @@ class MainScreen(Screen):
         text = self.ids.learn_input.text.strip()
         if not text: return
         self.ids.learn_input.text = ''
-        self.add_bubble(self.ids.learn_container, text, is_user=True)
+        self.add_simple_bubble(self.ids.learn_container, text, is_user=True)
         
         def worker():
             try:
@@ -353,60 +344,47 @@ class MainScreen(Screen):
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
                 payload = json.dumps({
                     "model": "meta-llama/llama-3-8b-instruct",
-                    "messages": [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
+                    "messages": [{"role": "user", "content": f"Мой ответ: {text}"}]
                 })
                 response = safe_url_request(url, payload, headers)
-                
-                if response.startswith("Ошибка"):
-                    self.update_answer(self.ids.learn_container, response, None, is_learn=True)
-                    return
-                    
                 result = json.loads(response)
                 answer = result["choices"][0]["message"]["content"].strip()
-                self.update_answer(self.ids.learn_container, answer, None, is_learn=True)
+                self.update_learn(answer=answer, loading=None)
             except Exception as e:
-                self.update_answer(self.ids.learn_container, f"Ошибка: {e}", None, is_learn=True)
+                self.update_learn(answer=f"Ошибка: {e}", loading=None)
                 
         threading.Thread(target=worker, daemon=True).start()
 
-    # --- ОБЩИЕ МЕТОДЫ ---
     @mainthread
-    def update_answer(self, container, answer, loading_label, is_learn):
-        if loading_label and loading_label.parent:
-            container.remove_widget(loading_label)
-        self.add_bubble(container, answer, is_user=False)
+    def update_learn(self, answer, loading):
+        if loading and loading.parent:
+            self.ids.learn_container.remove_widget(loading)
+        self.add_simple_bubble(self.ids.learn_container, answer, is_user=False)
 
-    def add_bubble(self, container, text, is_user):
-        bubble = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
+    # --- БЕЗОПАСНЫЙ ПУЗЫРЬ (Просто текст) ---
+    def add_simple_bubble(self, container, text, is_user):
+        # Выравнивание с помощью пустых Label
+        layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
+        
+        lbl = Label(text=text, size_hint_y=None, text_size=(dp(250), None), 
+                    halign='right' if is_user else 'left', valign='top',
+                    color=(0, 0, 0.7, 1) if is_user else (0, 0, 0, 1), markup=True)
+        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
         
         if is_user:
-            bubble.add_widget(Label(size_hint_x=0.2)) # Отступ слева
+            layout.add_widget(Label(size_hint_x=0.2))
+            layout.add_widget(lbl)
+        else:
+            layout.add_widget(lbl)
+            layout.add_widget(Label(size_hint_x=0.2))
             
-        # Сам пузырь
-        bubble_content = BoxLayout(orientation='vertical', size_hint_x=0.8, padding=dp(10), spacing=dp(5))
-        
-        # Рисуем фон пузыря
-        with bubble_content.canvas.before:
-            Color(*(0.9, 0.95, 1, 1) if is_user else (1, 1, 1, 1))
-            rect = RoundedRectangle(pos=bubble_content.pos, size=bubble_content.size, radius=[dp(15)])
-        bubble_content.bind(pos=lambda *x: setattr(rect, 'pos', bubble_content.pos))
-        bubble_content.bind(size=lambda *x: setattr(rect, 'size', bubble_content.size))
-        
-        lbl = Label(text=text, size_hint_y=None, text_size=(dp(280), None), halign='left', valign='top', color=(0,0,0,1))
-        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
-        bubble_content.add_widget(lbl)
-        
-        bubble.add_widget(bubble_content)
-        
-        if not is_user:
-            bubble.add_widget(Label(size_hint_x=0.2)) # Отступ справа
-            
-        bubble.height = lbl.height + dp(20)
-        container.add_widget(bubble)
+        layout.height = lbl.height + dp(10)
+        container.add_widget(layout)
         
         # Анимация
-        bubble.opacity = 0
-        Animation(opacity=1, d=0.3).start(bubble)
+        layout.opacity = 0
+        Animation(opacity=1, d=0.2).start(layout)
+        Clock.schedule_once(lambda dt: setattr(container, 'height', container.minimum_height), 0.1)
 
 def save_note(text):
     try:
