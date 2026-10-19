@@ -1,51 +1,15 @@
 # -*- coding: utf-8 -*-
-import os
-import json
-from datetime import datetime
 from kivy.app import App
-from kivy.clock import Clock
 from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.boxlayout import BoxLayout
 from kivy.metrics import dp
-from kivy.graphics import Color, RoundedRectangle
-from kivy.animation import Animation
 
-# ============================================================
-# КАСТОМНЫЕ КНОПКИ
-# ============================================================
-class TabButton(Button):
-    def __init__(self, bg_color_normal=(0.4, 0.4, 0.45, 1), bg_color_active=(0.15, 0.45, 0.85, 1), **kwargs):
-        super().__init__(**kwargs)
-        self.background_normal = ''
-        self.background_down = ''
-        self.background_color = (0, 0, 0, 0)
-        self.bg_color_normal = bg_color_normal
-        self.bg_color_active = bg_color_active
-        self.current_color = bg_color_normal
-        self.color_normal = (0.9, 0.9, 0.9, 1)
-        self.color_active = (1, 1, 1, 1)
-        self.color = self.color_normal
-        self.bind(pos=self.update_canvas, size=self.update_canvas)
-
-    def update_canvas(self, *args):
-        self.canvas.before.clear()
-        with self.canvas.before:
-            Color(*self.current_color)
-            RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(12)])
-
-    def set_active(self, is_active):
-        target_bg = self.bg_color_active if is_active else self.bg_color_normal
-        target_text = self.color_active if is_active else self.color_normal
-        Animation(current_color=target_bg, color=target_text, d=0.2, t='out_quad').start(self)
-
-# ============================================================
-# ИНТЕРФЕЙС (KV)
-# ============================================================
+# Никаких графических инструкций и анимаций, только стандартные элементы
 KV = """
 <MainScreen>:
     BoxLayout:
@@ -59,23 +23,26 @@ KV = """
             text: 'Умный конспект'
             font_size: '22sp'
             bold: True
-            color: 0.1, 0.15, 0.2, 1
 
         BoxLayout:
             size_hint_y: None
             height: dp(45)
             spacing: dp(5)
-            TabButton:
+            # Обычные кнопки
+            Button:
                 id: btn_tab_new
                 text: 'Загрузка'
+                background_color: 0.15, 0.45, 0.85, 1
                 on_release: root.switch_tab('new')
-            TabButton:
+            Button:
                 id: btn_tab_history
                 text: 'История'
+                background_color: 0.4, 0.4, 0.45, 1
                 on_release: root.switch_tab('history')
-            TabButton:
+            Button:
                 id: btn_tab_chat
                 text: 'Чат'
+                background_color: 0.4, 0.4, 0.45, 1
                 on_release: root.switch_tab('chat')
 
         ScreenManager:
@@ -87,12 +54,11 @@ KV = """
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: dp(10)
-                    TabButton:
+                    Button:
                         text: 'Тест кнопки загрузки'
                         size_hint_y: None
                         height: dp(60)
-                        bg_color_normal: (0.55, 0.3, 0.8, 1)
-                        bg_color_active: (0.55, 0.3, 0.8, 1)
+                        background_color: 0.55, 0.3, 0.8, 1
                         on_release: root.test_click()
 
             Screen:
@@ -102,7 +68,6 @@ KV = """
                     spacing: dp(10)
                     Label:
                         text: 'Здесь будут конспекты'
-                        color: (0.5, 0.5, 0.5, 1)
 
             Screen:
                 name: 'chat'
@@ -124,24 +89,24 @@ KV = """
                             id: chat_input
                             hint_text: 'Введите вопрос...'
                             multiline: False
-                        TabButton:
+                        Button:
                             text: 'Ввод'
                             size_hint_x: None
                             width: dp(90)
-                            bg_color_normal: (0.15, 0.45, 0.85, 1)
-                            bg_color_active: (0.15, 0.45, 0.85, 1)
+                            background_color: 0.15, 0.45, 0.85, 1
                             on_release: root.test_click()
 """
 
 class MainScreen(Screen):
     def switch_tab(self, name):
         self.ids.content_manager.current = name
-        self.ids.btn_tab_new.set_active(name == 'new')
-        self.ids.btn_tab_history.set_active(name == 'history')
-        self.ids.btn_tab_chat.set_active(name == 'chat')
+        
+        # Вручную меняем цвета обычных кнопок
+        self.ids.btn_tab_new.background_color = (0.15, 0.45, 0.85, 1) if name == 'new' else (0.4, 0.4, 0.45, 1)
+        self.ids.btn_tab_history.background_color = (0.15, 0.45, 0.85, 1) if name == 'history' else (0.4, 0.4, 0.45, 1)
+        self.ids.btn_tab_chat.background_color = (0.15, 0.45, 0.85, 1) if name == 'chat' else (0.4, 0.4, 0.45, 1)
 
     def test_click(self):
-        # Просто добавляем текст в чат, проверяя, что UI работает
         lbl = Label(text="Кнопка работает!", size_hint_y=None, height=dp(40), color=(0,0.5,0,1))
         self.ids.chat_container.add_widget(lbl)
 
