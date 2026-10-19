@@ -45,7 +45,7 @@ def init_storage():
     except: NOTES_FOLDER = "."
 
 # ============================================================
-# БЕЗОПАСНЫЙ СЕТЕВОЙ ЗАПРОС ЧЕРЕЗ JAVA (Не вызывает вылетов)
+# БЕЗОПАСНЫЙ СЕТЕВОЙ ЗАПРОС ЧЕРЕЗ JAVA
 # ============================================================
 def safe_url_request(url, json_data=None, headers=None):
     if platform != 'android':
@@ -68,7 +68,19 @@ def safe_url_request(url, json_data=None, headers=None):
             output_stream.close()
             
         response_code = conn.getResponseCode()
+        
+        # Читаем ответ сервера, даже если это ошибка (403, 502 и т.д.)
         if response_code != 200:
+            error_stream = conn.getErrorStream()
+            if error_stream is not None:
+                reader = BufferedReader(InputStreamReader(error_stream))
+                error_response = StringBuilder()
+                line = reader.readLine()
+                while line is not None:
+                    error_response.append(line)
+                    line = reader.readLine()
+                reader.close()
+                return f"Ошибка API ({response_code}): {error_response.toString()[:200]}"
             return f"Ошибка API: {response_code}"
             
         input_stream = InputStreamReader(conn.getInputStream())
@@ -80,7 +92,11 @@ def safe_url_request(url, json_data=None, headers=None):
             line = reader.readLine()
         reader.close()
         
-        return str(response.toString())
+        res_str = str(response.toString())
+        if not res_str.strip():
+            return "Ошибка: Сервер вернул пустой ответ."
+            
+        return res_str
     except Exception as e:
         print(f"Сетевая ошибка: {e}")
         return f"Ошибка сети: {e}"
@@ -207,6 +223,12 @@ class MainScreen(Screen):
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
             
             response = safe_url_request(url, payload, headers)
+            
+            # Защита от не-JSON ответа
+            if response.startswith("Ошибка"):
+                self.update_photo_result(response, 'Ошибка сервера')
+                return
+                
             result = json.loads(response)
             
             if result.get('IsErroredOnProcessing'):
@@ -216,7 +238,7 @@ class MainScreen(Screen):
             self.update_photo_result(text, 'Готово! Сохранено.')
             save_note(text)
         except Exception as e:
-            self.update_photo_result(f'Ошибка: {e}', 'Ошибка')
+            self.update_photo_result(f'Ошибка: {e}', 'Ошибка разбора')
 
     @mainthread
     def update_photo_result(self, text, status):
@@ -244,11 +266,17 @@ class MainScreen(Screen):
                     "messages": self.chat_history
                 })
                 response = safe_url_request(url, payload, headers)
+                
+                # Защита от не-JSON ответа
+                if response.startswith("Ошибка"):
+                    self.update_chat_answer(response, loading)
+                    return
+                    
                 result = json.loads(response)
                 answer = result["choices"][0]["message"]["content"].strip()
                 self.update_chat_answer(answer, loading)
             except Exception as e:
-                self.update_chat_answer(f"Ошибка: {e}", loading)
+                self.update_chat_answer(f"Ошибка разбора: {e}", loading)
                 
         threading.Thread(target=worker, daemon=True).start()
 
