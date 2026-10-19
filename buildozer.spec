@@ -15,7 +15,7 @@ fullscreen = 0
 # Только интернет, никаких запросов к памяти!
 android.permissions = INTERNET
 
-android.api = 33
+android.api = 30
 android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a
