@@ -2,6 +2,7 @@
 import os
 import json
 import threading
+import traceback
 from datetime import datetime
 from kivy.app import App
 from kivy.clock import Clock, mainthread
@@ -15,11 +16,16 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
 from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
-from kivy.utils import platform
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
 import requests
+
+# Глобальный перехватчик ошибок Kivy (если что-то пойдет не так, покажет на экране)
+def handle_exception(inst, exception):
+    print("КРИТИЧЕСКАЯ ОШИБКА:", exception)
+    traceback.print_exc()
+Window.bind(on_exception=handle_exception)
 
 # ============================================================
 # НАСТРОЙКИ
@@ -28,18 +34,19 @@ OCR_API_KEY = "K86772432188957"
 GROQ_API_KEY = "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"
 
 # ============================================================
-# БЕЗОПАСНЫЕ ПУТИ (Только личная папка приложения)
+# БЕЗОПАСНЫЕ ПУТИ
 # ============================================================
-def get_data_path():
+NOTES_FOLDER = ""
+
+def init_storage():
+    global NOTES_FOLDER
     try:
-        # App.get_running_app().user_data_dir - это единственная папка, 
-        # куда Android разрешает писать без запроса прав
         base = App.get_running_app().user_data_dir
-        path = os.path.join(base, "notes")
-        os.makedirs(path, exist_ok=True)
-        return path
-    except:
-        return "."
+        NOTES_FOLDER = os.path.join(base, "notes")
+        os.makedirs(NOTES_FOLDER, exist_ok=True)
+    except Exception as e:
+        print(f"Ошибка создания папки: {e}")
+        NOTES_FOLDER = "."
 
 # ============================================================
 # КАСТОМНЫЕ КНОПКИ
@@ -126,7 +133,7 @@ KV = """
                         on_release: root.open_file_chooser('photo')
                     Label:
                         id: photo_status
-                        text: 'Текст сохранится автоматически'
+                        text: 'Выберите файл'
                         size_hint_y: None
                         height: dp(30)
                         color: 0.4, 0.4, 0.45, 1
@@ -258,13 +265,10 @@ class MainScreen(Screen):
         self.learn_context = ""
         self.all_notes = []
         self.file_picker_target = 'photo'
-        
-        # Инициализируем папку только после полной загрузки приложения
         Clock.schedule_once(self.setup_app, 0.5)
 
     def setup_app(self, dt):
-        global NOTES_FOLDER
-        NOTES_FOLDER = get_data_path()
+        init_storage() # Инициализируем папку только когда приложение загружено
         self.switch_tab('new')
 
     def switch_tab(self, name):
@@ -279,13 +283,16 @@ class MainScreen(Screen):
         self.file_picker_target = target
         content = BoxLayout(orientation='vertical')
         
-        # Стандартный выбор файла Kivy (без вылетов)
-        # Ищем в папке Загрузки, если нет - в корне
+        # Безопасный запуск проводника
         start_path = "/storage/emulated/0/Download"
         if not os.path.exists(start_path):
-            start_path = "/storage/emulated/0/"
+            start_path = os.path.expanduser("~")
             
-        filechooser = FileChooserListView(path=start_path, filters=['*.png', '*.jpg', '*.jpeg', '*.txt'])
+        try:
+            filechooser = FileChooserListView(path=start_path, filters=['*.png', '*.jpg', '*.jpeg', '*.txt'])
+        except:
+            filechooser = FileChooserListView(path=".", filters=['*.png', '*.jpg', '*.jpeg', '*.txt'])
+            
         content.add_widget(filechooser)
         
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
@@ -321,7 +328,7 @@ class MainScreen(Screen):
                 save_note(ready)
                 self.update_photo_result(ready, 'Готово! Сохранено.')
             except Exception as e:
-                self.update_photo_result(f'Ошибка: {e}', 'Ошибка')
+                self.update_photo_result(f'Ошибка: {e}', 'Ошибка чтения файла')
         threading.Thread(target=worker, daemon=True).start()
 
     @mainthread
@@ -332,9 +339,12 @@ class MainScreen(Screen):
 
     def copy_photo_text(self):
         if self.current_photo_text:
-            from kivy.core.clipboard import Clipboard
-            Clipboard.copy(self.current_photo_text)
-            self.ids.photo_status.text = 'Скопировано!'
+            try:
+                from kivy.core.clipboard import Clipboard
+                Clipboard.copy(self.current_photo_text)
+                self.ids.photo_status.text = 'Скопировано!'
+            except:
+                self.ids.photo_status.text = 'Ошибка копирования'
 
     def load_history(self):
         self.all_notes = get_all_notes()
@@ -344,7 +354,7 @@ class MainScreen(Screen):
         if not query:
             self.render_history(self.all_notes)
             return
-        filtered = [n for n in self.all_notes if query.lower() in n['text'].lower() or query.lower() in n['title'].lower()]
+        filtered = [n for n in self.all_notes if query.lower() in n.get('text', '').lower() or query.lower() in n.get('title', '').lower()]
         self.render_history(filtered)
 
     def render_history(self, notes):
@@ -354,13 +364,15 @@ class MainScreen(Screen):
             container.add_widget(Label(text='Ничего не найдено', color=(0.6,0.6,0.6,1)))
             return
         for note in notes:
-            btn = TabButton(text=f"{note['title']}\n{note['date']}", size_hint_y=None, height=dp(70), bg_color_normal=(1, 1, 1, 1), bg_color_active=(0.9, 0.9, 0.9, 1), color=(0.1, 0.1, 0.1, 1))
+            title = note.get('title', 'Без названия')
+            date = note.get('date', '')
+            btn = TabButton(text=f"{title}\n{date}", size_hint_y=None, height=dp(70), bg_color_normal=(1, 1, 1, 1), bg_color_active=(0.9, 0.9, 0.9, 1), color=(0.1, 0.1, 0.1, 1))
             btn.bind(on_release=lambda b, n=note: self.open_note(n))
             container.add_widget(btn)
 
     def open_note(self, note):
         content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
-        text_input = TextInput(text=note['text'], multiline=True, background_color=(1,1,1,1), foreground_color=(0.1,0.1,0.1,1))
+        text_input = TextInput(text=note.get('text', ''), multiline=True, background_color=(1,1,1,1), foreground_color=(0.1,0.1,0.1,1))
         content.add_widget(text_input)
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
         btn_save = Button(text='Обновить', background_color=(0.2, 0.6, 0.4, 1))
@@ -368,13 +380,13 @@ class MainScreen(Screen):
         btn_box.add_widget(btn_save)
         btn_box.add_widget(btn_delete)
         content.add_widget(btn_box)
-        popup = Popup(title=note['title'], content=content, size_hint=(0.95, 0.9))
+        popup = Popup(title=note.get('title', ''), content=content, size_hint=(0.95, 0.9))
         def save_edit(*_):
-            update_note(note['id'], text_input.text)
+            update_note(note.get('id'), text_input.text)
             popup.dismiss()
             self.load_history()
         def delete_note_action(*_):
-            delete_note(note['id'])
+            delete_note(note.get('id'))
             popup.dismiss()
             self.load_history()
         btn_save.bind(on_release=save_edit)
@@ -410,15 +422,18 @@ class MainScreen(Screen):
         loading = Label(text='Учитель думает...', size_hint_y=None, height=dp(40), color=(0.5, 0.5, 0.5, 1), italic=True)
         self.ids.learn_container.add_widget(loading)
         def worker():
-            prompt = f"Мой ответ: {text}\nОцени ответ и задай следующий вопрос."
-            answer = ask_groq(prompt, is_tutor=True, history=self.learn_history)
-            self.learn_history.append({'role': 'assistant', 'content': answer})
-            self.update_learn_answer(answer, loading)
+            try:
+                prompt = f"Мой ответ: {text}\nОцени ответ и задай следующий вопрос."
+                answer = ask_groq(prompt, is_tutor=True, history=self.learn_history)
+                self.learn_history.append({'role': 'assistant', 'content': answer})
+                self.update_learn_answer(answer, loading)
+            except Exception as e:
+                self.update_learn_answer(f"Ошибка сети: {e}", loading)
         threading.Thread(target=worker, daemon=True).start()
 
     @mainthread
     def update_learn_answer(self, answer, loading_label=None):
-        if loading_label:
+        if loading_label and loading_label.parent:
             self.ids.learn_container.remove_widget(loading_label)
         self.add_learn_bubble(answer, is_user=False)
 
@@ -449,14 +464,18 @@ class MainScreen(Screen):
         loading = Label(text='Думаю...', size_hint_y=None, height=dp(40), color=(0.5, 0.5, 0.5, 1), italic=True)
         self.ids.chat_container.add_widget(loading)
         def worker():
-            answer = answer_question(self.chat_history)
-            self.chat_history.append({'role': 'assistant', 'content': answer})
-            self.update_chat_answer(answer, loading)
+            try:
+                answer = answer_question(self.chat_history)
+                self.chat_history.append({'role': 'assistant', 'content': answer})
+                self.update_chat_answer(answer, loading)
+            except Exception as e:
+                self.update_chat_answer(f"Ошибка сети: {e}", loading)
         threading.Thread(target=worker, daemon=True).start()
 
     @mainthread
     def update_chat_answer(self, answer, loading_label):
-        self.ids.chat_container.remove_widget(loading_label)
+        if loading_label and loading_label.parent:
+            self.ids.chat_container.remove_widget(loading_label)
         self.add_chat_bubble(answer, is_user=False)
 
     def add_chat_bubble(self, text, is_user):
@@ -479,8 +498,10 @@ class MainScreen(Screen):
         Clock.schedule_once(lambda dt: setattr(self.ids.chat_scroll, 'scroll_y', 0), 0.1)
 
     def copy_text_to_clipboard(self, text):
-        from kivy.core.clipboard import Clipboard
-        Clipboard.copy(text)
+        try:
+            from kivy.core.clipboard import Clipboard
+            Clipboard.copy(text)
+        except: pass
 
 # ============================================================
 # API И ХРАНЕНИЕ
@@ -497,6 +518,8 @@ def clean_text(raw_text):
     return raw_text.replace('*', '').replace('#', '').strip()
 
 def recognize_photo(filepath):
+    if not os.path.exists(filepath):
+        raise Exception("Файл не найден или нет доступа.")
     url = "https://api.ocr.space/parse/image"
     payload = {'apikey': OCR_API_KEY, 'language': 'rus', 'scale': 'true'}
     with open(filepath, 'rb') as f:
@@ -506,22 +529,29 @@ def recognize_photo(filepath):
     return result.get('ParsedResults', [{}])[0].get('ParsedText', '')
 
 def save_note(text):
-    note_id = datetime.now().strftime("%Y%m%d_%H%M%S%f")
-    title = text.strip().split('\n')[0][:40]
-    data = {"id": note_id, "title": title, "date": datetime.now().strftime("%d.%m.%Y"), "text": text}
-    with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
+    try:
+        note_id = datetime.now().strftime("%Y%m%d_%H%M%S%f")
+        title = text.strip().split('\n')[0][:40]
+        data = {"id": note_id, "title": title, "date": datetime.now().strftime("%d.%m.%Y"), "text": text}
+        with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"Ошибка записи: {e}")
 
 def update_note(note_id, new_text):
-    path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
-    if os.path.exists(path):
-        with open(path, 'r', encoding='utf-8') as f: data = json.load(f)
-        data['text'] = new_text
-        data['title'] = new_text.strip().split('\n')[0][:40]
-        with open(path, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
+    try:
+        path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
+        if os.path.exists(path):
+            with open(path, 'r', encoding='utf-8') as f: data = json.load(f)
+            data['text'] = new_text
+            data['title'] = new_text.strip().split('\n')[0][:40]
+            with open(path, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
+    except: pass
 
 def delete_note(note_id):
-    path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
-    if os.path.exists(path): os.remove(path)
+    try:
+        path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
+        if os.path.exists(path): os.remove(path)
+    except: pass
 
 def get_all_notes():
     notes = []
@@ -529,18 +559,21 @@ def get_all_notes():
     for fname in sorted(os.listdir(NOTES_FOLDER), reverse=True):
         if fname.endswith('.json'):
             try:
-                with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: notes.append(json.load(f))
-            except: pass
+                with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: 
+                    notes.append(json.load(f))
+            except: pass # Игнорируем битые файлы
     return notes
 
 def find_relevant_notes(question):
-    notes = get_all_notes()
-    if not notes: return ""
-    words = [w.lower() for w in question.split() if len(w) > 3]
-    scored = [(sum(n["text"].lower().count(w) for w in words), n) for n in notes]
-    scored = [s for s in scored if s[0] > 0]
-    scored.sort(key=lambda x: -x[0])
-    return "\n\n".join(n["text"] for _, n in scored[:3])[:6000]
+    try:
+        notes = get_all_notes()
+        if not notes: return ""
+        words = [w.lower() for w in question.split() if len(w) > 3]
+        scored = [(sum(n.get("text", "").lower().count(w) for w in words), n) for n in notes]
+        scored = [s for s in scored if s[0] > 0]
+        scored.sort(key=lambda x: -x[0])
+        return "\n\n".join(n.get("text", "") for _, n in scored[:3])[:6000]
+    except: return ""
 
 def ask_groq(prompt, is_tutor=False, history=[]):
     system = "Ты ассистент. Отвечай на основе конспекта."
@@ -552,9 +585,9 @@ def ask_groq(prompt, is_tutor=False, history=[]):
     payload = {"model": "openai/gpt-oss-120b", "messages": messages, "temperature": 0.5}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=90)
-        if resp.status_code != 200: return f"Ошибка API: {resp.status_code}"
+        if resp.status_code != 200: return f"Ошибка API: {resp.status_code}. Проверьте VPN."
         return resp.json()["choices"][0]["message"]["content"].strip()
-    except Exception as e: return f"Ошибка: {str(e)}"
+    except Exception as e: return f"Ошибка сети: {str(e)}"
 
 def answer_question(messages):
     last_q = messages[-1]["content"]
