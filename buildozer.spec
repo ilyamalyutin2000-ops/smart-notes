@@ -6,8 +6,8 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
-
-requirements = python3,kivy,requests,urllib3,chardet,idna,kivymd==1.1.1
+# Только проверенные библиотеки, без kivymd
+requirements = python3,kivy,requests
 
 orientation = portrait
 fullscreen = 0
