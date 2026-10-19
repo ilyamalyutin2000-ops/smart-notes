@@ -66,6 +66,8 @@ def safe_url_request(url, json_data=None, headers=None):
 # ИНТЕРФЕЙС
 # ============================================================
 KV = """
+#:import SlideTransition kivy.uix.screenmanager.SlideTransition
+
 <MainScreen>:
     BoxLayout:
         orientation: 'vertical'
