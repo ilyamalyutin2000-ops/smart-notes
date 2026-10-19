@@ -7,6 +7,8 @@ from kivy.app import App
 from kivy.clock import Clock, mainthread
 from kivy.lang import Builder
 from kivy.uix.screenmanager import ScreenManager, Screen, SlideTransition
+from kivy.factory import Factory
+Factory.register('SlideTransition', cls=SlideTransition)
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
@@ -74,7 +76,6 @@ class TabButton(Button):
 # ============================================================
 KV = """
 <MainScreen>:
-    transition: SlideTransition(direction='left', duration=0.3)
     BoxLayout:
         orientation: 'vertical'
         padding: dp(10)
@@ -133,7 +134,7 @@ KV = """
                             
                     ScreenManager:
                         id: subtab_manager
-                        transition: SlideTransition(direction='left', duration=0.2)
+                        transition: SlideTransition(direction='left', duration=0.3)
                         
                         Screen:
                             name: 'photo'
