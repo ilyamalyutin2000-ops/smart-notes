@@ -13,62 +13,33 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.popup import Popup
+from kivy.uix.filechooser import FileChooserListView
 from kivy.metrics import dp
 from kivy.utils import platform, get_color_from_hex
 from kivy.core.window import Window
 from kivy.graphics import Color, RoundedRectangle
 from kivy.animation import Animation
-from kivy.uix.switch import Switch
 import requests
 
 # ============================================================
-# ИМПОРТЫ ДЛЯ ANDROID (Pyjnius)
-# ============================================================
-if platform == 'android':
-    from jnius import autoclass, cast
-    from android import mActivity, activity
-    from android.permissions import request_permissions, Permission
-
-# ============================================================
-# НАСТРОЙКИ (Ключи)
+# НАСТРОЙКИ
 # ============================================================
 OCR_API_KEY = "K86772432188957"
 GROQ_API_KEY = "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"
 
 # ============================================================
-# ПУТИ
+# БЕЗОПАСНЫЕ ПУТИ (Песочница Android)
 # ============================================================
 def get_data_path(folder_name):
-    if platform == 'android':
-        from android.storage import app_storage_path
-        base = app_storage_path()
-    else:
-        base = os.getcwd()
+    # Принудительно используем user_data_dir (защищенная папка приложения)
+    app = App.get_running_app()
+    base = app.user_data_dir if app else os.getcwd()
     path = os.path.join(base, folder_name)
     os.makedirs(path, exist_ok=True)
     return path
 
-NOTES_FOLDER = get_data_path("notes")
-
-# ============================================================
-# ЦВЕТОВЫЕ ТЕМЫ
-# ============================================================
-THEMES = {
-    'light': {
-        'bg': '#F4F6F9', 'text': (0.1, 0.15, 0.2, 1), 
-        'btn_normal': (0.4, 0.4, 0.45, 1), 'btn_active': (0.15, 0.45, 0.85, 1),
-        'btn_text_normal': (0.9, 0.9, 0.9, 1), 'btn_text_active': (1, 1, 1, 1),
-        'chat_user': (0.95, 0.95, 0.95, 1), 'chat_bot': (0.9, 0.95, 1, 1)
-    },
-    'dark': {
-        'bg': '#1E1E1E', 'text': (0.9, 0.9, 0.9, 1), 
-        'btn_normal': (0.3, 0.3, 0.3, 1), 'btn_active': (0.2, 0.5, 0.9, 1),
-        'btn_text_normal': (0.8, 0.8, 0.8, 1), 'btn_text_active': (1, 1, 1, 1),
-        'chat_user': (0.25, 0.25, 0.25, 1), 'chat_bot': (0.15, 0.2, 0.3, 1)
-    }
-}
-
-current_theme = 'light'
+# Мы вызываем это внутри App, поэтому папка создастся при старте
+NOTES_FOLDER = "" 
 
 # ============================================================
 # КАСТОМНЫЕ КНОПКИ
@@ -82,8 +53,8 @@ class TabButton(Button):
         self.bg_color_normal = bg_color_normal
         self.bg_color_active = bg_color_active
         self.current_color = bg_color_normal
-        self.color_normal = THEMES[current_theme]['btn_text_normal']
-        self.color_active = THEMES[current_theme]['btn_text_active']
+        self.color_normal = (0.9, 0.9, 0.9, 1)
+        self.color_active = (1, 1, 1, 1)
         self.color = self.color_normal
         self.bind(pos=self.update_canvas, size=self.update_canvas)
 
@@ -105,36 +76,17 @@ KV = """
 <MainScreen>:
     BoxLayout:
         orientation: 'vertical'
-        canvas.before:
-            Color:
-                rgba: app.theme_bg
-            Rectangle:
-                pos: self.pos
-                size: self.size
         padding: dp(10)
         spacing: dp(10)
 
-        # Шапка с боковой панелью
-        BoxLayout:
+        Label:
             size_hint_y: None
             height: dp(40)
-            spacing: dp(5)
-            
-            Button:
-                text: '☰'
-                size_hint_x: None
-                width: dp(40)
-                font_size: '20sp'
-                background_color: (0.2, 0.2, 0.2, 0.5)
-                on_release: root.open_sidebar()
-            
-            Label:
-                text: 'Умный конспект'
-                font_size: '20sp'
-                bold: True
-                color: app.theme_text
+            text: 'Умный конспект'
+            font_size: '22sp'
+            bold: True
+            color: 0.1, 0.15, 0.2, 1
 
-        # Вкладки
         BoxLayout:
             size_hint_y: None
             height: dp(45)
@@ -160,7 +112,6 @@ KV = """
             id: content_manager
             transition: SlideTransition(direction='left', duration=0.3)
             
-            # === ВКЛАДКА ЗАГРУЗКА ===
             Screen:
                 name: 'new'
                 BoxLayout:
@@ -200,7 +151,7 @@ KV = """
                                     text: 'Текст сохранится автоматически'
                                     size_hint_y: None
                                     height: dp(30)
-                                    color: app.theme_text
+                                    color: 0.4, 0.4, 0.45, 1
                                 ScrollView:
                                     Label:
                                         id: photo_output
@@ -208,7 +159,7 @@ KV = """
                                         size_hint_y: None
                                         height: self.texture_size[1]
                                         text_size: self.width, None
-                                        color: app.theme_text
+                                        color: 0.1, 0.15, 0.2, 1
                                 TabButton:
                                     text: 'Копировать'
                                     size_hint_y: None
@@ -225,8 +176,8 @@ KV = """
                                     id: manual_input
                                     hint_text: 'Введите текст...'
                                     multiline: True
-                                    background_color: app.theme_input_bg
-                                    foreground_color: app.theme_text
+                                    background_color: 1, 1, 1, 1
+                                    foreground_color: 0.1, 0.15, 0.2, 1
                                 TabButton:
                                     text: 'Сохранить'
                                     size_hint_y: None
@@ -235,24 +186,20 @@ KV = """
                                     bg_color_active: (0.55, 0.3, 0.8, 1)
                                     on_release: root.process_manual_text()
 
-            # === ВКЛАДКА ИСТОРИЯ ===
             Screen:
                 name: 'history'
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: dp(10)
-                    
-                    # Поиск
                     TextInput:
                         id: search_input
-                        hint_text: 'Поиск по конспектам...'
+                        hint_text: 'Поиск...'
                         size_hint_y: None
                         height: dp(45)
                         multiline: False
-                        background_color: app.theme_input_bg
-                        foreground_color: app.theme_text
+                        background_color: 1, 1, 1, 1
+                        foreground_color: 0.1, 0.15, 0.2, 1
                         on_text: root.filter_history(self.text)
-                        
                     TabButton:
                         text: 'Обновить'
                         size_hint_y: None
@@ -260,7 +207,6 @@ KV = """
                         bg_color_normal: (0.15, 0.45, 0.85, 1)
                         bg_color_active: (0.15, 0.45, 0.85, 1)
                         on_release: root.load_history()
-                        
                     ScrollView:
                         BoxLayout:
                             id: history_container
@@ -269,13 +215,11 @@ KV = """
                             height: self.minimum_height
                             spacing: dp(8)
 
-            # === ВКЛАДКА ОБУЧЕНИЕ ===
             Screen:
                 name: 'learn'
                 BoxLayout:
                     orientation: 'vertical'
                     spacing: dp(10)
-                    
                     TabButton:
                         text: 'Загрузить материал для обучения'
                         size_hint_y: None
@@ -283,14 +227,12 @@ KV = """
                         bg_color_normal: (0.2, 0.6, 0.4, 1)
                         bg_color_active: (0.2, 0.6, 0.4, 1)
                         on_release: root.open_file_chooser('learn')
-                        
                     Label:
                         id: learn_status
-                        text: 'Загрузите конспект, и ИИ составит план обучения'
+                        text: 'Загрузите конспект, и ИИ составит план'
                         size_hint_y: None
                         height: dp(30)
-                        color: app.theme_text
-                        
+                        color: 0.4, 0.4, 0.45, 1
                     ScrollView:
                         id: learn_scroll
                         BoxLayout:
@@ -299,17 +241,16 @@ KV = """
                             size_hint_y: None
                             height: self.minimum_height
                             spacing: dp(12)
-                            
                     BoxLayout:
                         size_hint_y: None
                         height: dp(55)
                         spacing: dp(8)
                         TextInput:
                             id: learn_input
-                            hint_text: 'Ваш ответ или вопрос...'
+                            hint_text: 'Ваш ответ...'
                             multiline: False
-                            background_color: app.theme_input_bg
-                            foreground_color: app.theme_text
+                            background_color: 1, 1, 1, 1
+                            foreground_color: 0.1, 0.15, 0.2, 1
                             on_text_validate: root.send_learn_message()
                         TabButton:
                             text: 'Ответить'
@@ -319,7 +260,6 @@ KV = """
                             bg_color_active: (0.15, 0.45, 0.85, 1)
                             on_release: root.send_learn_message()
 
-            # === ВКЛАДКА ЧАТ ===
             Screen:
                 name: 'chat'
                 BoxLayout:
@@ -341,8 +281,8 @@ KV = """
                             id: chat_input
                             hint_text: 'Введите вопрос...'
                             multiline: False
-                            background_color: app.theme_input_bg
-                            foreground_color: app.theme_text
+                            background_color: 1, 1, 1, 1
+                            foreground_color: 0.1, 0.15, 0.2, 1
                             on_text_validate: root.send_chat_message()
                         TabButton:
                             text: 'Ввод'
@@ -370,9 +310,8 @@ class MainScreen(Screen):
         self.chat_history = []
         self.learn_history = []
         self.learn_context = ""
-        self.all_notes = [] # Для поиска
-        self._android_result_callback = None
-        self.file_picker_target = 'photo' # Куда грузим файл
+        self.all_notes = []
+        self.file_picker_target = 'photo'
         Clock.schedule_once(self.init_colors, 0.1)
 
     def init_colors(self, dt):
@@ -393,96 +332,30 @@ class MainScreen(Screen):
         self.ids.btn_sub_text.set_active(name == 'text')
 
     # ========================================================
-    # БОКОВАЯ ПАНЕЛЬ (МЕНЮ)
-    # ========================================================
-    def open_sidebar(self):
-        content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
-        
-        # Тема
-        row_theme = BoxLayout(size_hint_y=None, height=dp(45), spacing=dp(10))
-        row_theme.add_widget(Label(text='Темная тема', color=app.theme_text))
-        switch = Switch(active=(current_theme == 'dark'))
-        switch.bind(active=self.toggle_theme)
-        row_theme.add_widget(switch)
-        content.add_widget(row_theme)
-        
-        # Очистка данных
-        btn_clear = TabButton(text='Очистить все конспекты', size_hint_y=None, height=dp(45), bg_color_normal=(0.85, 0.25, 0.25, 1), bg_color_active=(0.85, 0.25, 0.25, 1))
-        btn_clear.bind(on_release=lambda x: self.clear_all_data(popup))
-        content.add_widget(btn_clear)
-        
-        # О приложении
-        btn_about = TabButton(text='О приложении', size_hint_y=None, height=dp(45), bg_color_normal=(0.2, 0.5, 0.8, 1), bg_color_active=(0.2, 0.5, 0.8, 1))
-        btn_about.bind(on_release=lambda x: self.show_about())
-        content.add_widget(btn_about)
-        
-        popup = Popup(title='Меню', content=content, size_hint=(0.8, 0.5))
-        popup.open()
-
-    def toggle_theme(self, switch, value):
-        global current_theme
-        current_theme = 'dark' if value else 'light'
-        app = App.get_running_app()
-        app.theme_bg = get_color_from_hex(THEMES[current_theme]['bg'])
-        app.theme_text = THEMES[current_theme]['text']
-        app.theme_input_bg = (0.2, 0.2, 0.2, 1) if value else (1, 1, 1, 1)
-        Window.clearcolor = app.theme_bg
-        # Обновление цветов кнопок произойдет при следующем клике
-
-    def clear_all_data(self, popup):
-        for f in os.listdir(NOTES_FOLDER):
-            os.remove(os.path.join(NOTES_FOLDER, f))
-        self.ids.history_container.clear_widgets()
-        popup.dismiss()
-        self.load_history()
-
-    def show_about(self):
-        popup = Popup(title='О приложении', content=Label(text='Умный конспект\nВерсия 1.0\n\nСоздано с помощью Kivy и Groq AI.', color=app.theme_text), size_hint=(0.8, 0.4))
-        popup.open()
-
-    # ========================================================
-    # ОТКРЫТИЕ ФАЙЛА (ANDROID)
+    # ВСТРОЕННЫЙ ВЫБОР ФАЙЛОВ (Kivy)
     # ========================================================
     def open_file_chooser(self, target='photo'):
         self.file_picker_target = target
-        if platform == 'android':
-            self._open_android_file_picker()
-        else:
-            self._open_desktop_file_chooser()
-
-    def _open_android_file_picker(self):
-        try:
-            Intent = autoclass('android.content.Intent')
-            intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.setType('*/*')
-            intent.addCategory(Intent.CATEGORY_OPENABLE)
-            chooser = Intent.createChooser(intent, cast('java.lang.CharSequence', 'Выберите файл'))
-            
-            if self._android_result_callback is None:
-                self._android_result_callback = FilePickerResult(self)
-                activity.bind(on_activity_result=self._android_result_callback.on_activity_result)
-            
-            mActivity.startActivityForResult(chooser, 1001)
-        except Exception as e:
-            self.ids.photo_status.text = f'Ошибка: {e}'
-
-    def _open_desktop_file_chooser(self):
-        from kivy.uix.filechooser import FileChooserListView
         content = BoxLayout(orientation='vertical')
-        filechooser = FileChooserListView(path=os.path.expanduser("~"))
+        # Для Android лучше указать путь к Загрузкам, на ПК - домашнюю папку
+        start_path = "/storage/emulated/0/Download" if platform == 'android' else os.path.expanduser("~")
+        filechooser = FileChooserListView(path=start_path)
         content.add_widget(filechooser)
+        
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
-        btn_cancel = Button(text='Отмена')
+        btn_cancel = Button(text='Отмена', background_color=(0.7, 0.7, 0.7, 1))
         btn_open = Button(text='Открыть', background_color=(0.2, 0.6, 0.4, 1))
         btn_box.add_widget(btn_cancel)
         btn_box.add_widget(btn_open)
         content.add_widget(btn_box)
+        
         popup = Popup(title='Выберите файл', content=content, size_hint=(0.95, 0.95))
         def cancel(*_): popup.dismiss()
         def open_file(*_):
             if filechooser.selection:
                 popup.dismiss()
                 self.on_file_selected(filechooser.selection[0])
+                
         btn_cancel.bind(on_release=cancel)
         btn_open.bind(on_release=open_file)
         popup.open()
@@ -493,9 +366,6 @@ class MainScreen(Screen):
         else:
             self.process_photo(path)
 
-    # ========================================================
-    # ОБРАБОТКА (АВТОСОХРАНЕНИЕ)
-    # ========================================================
     def process_photo(self, path):
         self.ids.photo_status.text = 'Обработка...'
         self.ids.photo_output.text = 'Подождите...'
@@ -503,8 +373,8 @@ class MainScreen(Screen):
             try:
                 raw = recognize_photo(path)
                 ready = clean_text(raw)
-                save_note(ready) # АВТОСОХРАНЕНИЕ
-                self.update_photo_result(ready, 'Готово! Сохранено в Историю.')
+                save_note(ready)
+                self.update_photo_result(ready, 'Готово! Сохранено.')
             except Exception as e:
                 self.update_photo_result(f'Ошибка: {e}', 'Ошибка')
         threading.Thread(target=worker, daemon=True).start()
@@ -518,7 +388,7 @@ class MainScreen(Screen):
     def process_manual_text(self):
         text = self.ids.manual_input.text.strip()
         if not text: return
-        save_note(clean_manual_text(text))
+        save_note(text)
         self.ids.manual_input.text = ''
         self.ids.manual_status.text = 'Сохранено!'
 
@@ -546,7 +416,7 @@ class MainScreen(Screen):
         container = self.ids.history_container
         container.clear_widgets()
         if not notes:
-            container.add_widget(Label(text='Ничего не найдено', color=app.theme_text))
+            container.add_widget(Label(text='Ничего не найдено', color=(0.6,0.6,0.6,1)))
             return
         for note in notes:
             btn = TabButton(text=f"{note['title']}\n{note['date']}", size_hint_y=None, height=dp(70), bg_color_normal=(1, 1, 1, 1), bg_color_active=(0.9, 0.9, 0.9, 1), color=(0.1, 0.1, 0.1, 1))
@@ -555,36 +425,29 @@ class MainScreen(Screen):
 
     def open_note(self, note):
         content = BoxLayout(orientation='vertical', padding=dp(10), spacing=dp(10))
-        
-        # Поле для чтения/редактирования
         text_input = TextInput(text=note['text'], multiline=True, background_color=(1,1,1,1), foreground_color=(0.1,0.1,0.1,1))
         content.add_widget(text_input)
-        
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(5))
         btn_save = Button(text='Обновить', background_color=(0.2, 0.6, 0.4, 1))
         btn_delete = Button(text='Удалить', background_color=(0.85, 0.25, 0.25, 1))
         btn_box.add_widget(btn_save)
         btn_box.add_widget(btn_delete)
         content.add_widget(btn_box)
-        
         popup = Popup(title=note['title'], content=content, size_hint=(0.95, 0.9))
-        
         def save_edit(*_):
             update_note(note['id'], text_input.text)
             popup.dismiss()
             self.load_history()
-            
         def delete_note_action(*_):
             delete_note(note['id'])
             popup.dismiss()
             self.load_history()
-            
         btn_save.bind(on_release=save_edit)
         btn_delete.bind(on_release=delete_note_action)
         popup.open()
 
     # ========================================================
-    # ОБУЧЕНИЕ (ИИ-ТЬЮТОР)
+    # ОБУЧЕНИЕ
     # ========================================================
     def process_learn_material(self, path):
         self.ids.learn_status.text = 'Чтение файла...'
@@ -594,12 +457,9 @@ class MainScreen(Screen):
                 self.learn_context = clean_text(raw)
                 self.learn_history = []
                 self.ids.learn_container.clear_widgets()
-                self.add_learn_bubble("Материал загружен! Сейчас составлю план обучения...", is_user=False)
-                
-                # Первый запрос к ИИ
-                prompt = f"Вот мой конспект:\n{self.learn_context}\n\nСоставь краткий пошаговый план обучения по этой теме и задай мне первый вопрос (задание) для проверки знаний."
+                self.add_learn_bubble("Материал загружен! Составляю план...", is_user=False)
+                prompt = f"Вот мой конспект:\n{self.learn_context}\n\nСоставь краткий пошаговый план обучения по этой теме и задай мне первый вопрос (задание)."
                 answer = ask_groq(prompt, is_tutor=True)
-                
                 self.learn_history.append({'role': 'assistant', 'content': answer})
                 self.update_learn_answer(answer)
             except Exception as e:
@@ -612,12 +472,10 @@ class MainScreen(Screen):
         self.ids.learn_input.text = ''
         self.add_learn_bubble(text, is_user=True)
         self.learn_history.append({'role': 'user', 'content': text})
-        
         loading = Label(text='Учитель думает...', size_hint_y=None, height=dp(40), color=(0.5, 0.5, 0.5, 1), italic=True)
         self.ids.learn_container.add_widget(loading)
-        
         def worker():
-            prompt = f"Мой ответ: {text}\nОцени мой ответ и продолжи обучение, задав следующий вопрос или объяснив ошибку."
+            prompt = f"Мой ответ: {text}\nОцени ответ и задай следующий вопрос."
             answer = ask_groq(prompt, is_tutor=True, history=self.learn_history)
             self.learn_history.append({'role': 'assistant', 'content': answer})
             self.update_learn_answer(answer, loading)
@@ -631,10 +489,8 @@ class MainScreen(Screen):
 
     def add_learn_bubble(self, text, is_user):
         msg_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
-        bg = THEMES[current_theme]['chat_user'] if is_user else THEMES[current_theme]['chat_bot']
-        color = (0,0,0,1) if is_user else THEMES[current_theme]['text']
-        
-        lbl = Label(text=text, size_hint_y=None, text_size=(dp(320), None), halign='right' if is_user else 'left', valign='top', color=color, markup=True)
+        bg = (0.95, 0.95, 0.95, 1) if is_user else (0.9, 0.95, 1, 1)
+        lbl = Label(text=text, size_hint_y=None, text_size=(dp(320), None), halign='right' if is_user else 'left', valign='top', color=(0,0,0,1) if is_user else (0.1,0.1,0.1,1), markup=True)
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
         with lbl.canvas.before:
             Color(*bg)
@@ -642,7 +498,6 @@ class MainScreen(Screen):
         lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
         lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
         msg_box.add_widget(lbl)
-        
         msg_box.height = lbl.height + dp(10)
         self.ids.learn_container.add_widget(msg_box)
         Clock.schedule_once(lambda dt: setattr(self.ids.learn_scroll, 'scroll_y', 0), 0.1)
@@ -671,10 +526,8 @@ class MainScreen(Screen):
 
     def add_chat_bubble(self, text, is_user):
         msg_box = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
-        bg = THEMES[current_theme]['chat_user'] if is_user else THEMES[current_theme]['chat_bot']
-        color = (0,0,0,1) if is_user else THEMES[current_theme]['text']
-
-        lbl = Label(text=text, size_hint_y=None, text_size=(dp(320), None), halign='right' if is_user else 'left', valign='top', color=color, italic=is_user, markup=True)
+        bg = (0.95, 0.95, 0.95, 1) if is_user else (0.9, 0.95, 1, 1)
+        lbl = Label(text=text, size_hint_y=None, text_size=(dp(320), None), halign='right' if is_user else 'left', valign='top', color=(0,0,0,1) if is_user else (0.1,0.1,0.1,1), italic=is_user, markup=True)
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
         with lbl.canvas.before:
             Color(*bg)
@@ -682,12 +535,10 @@ class MainScreen(Screen):
         lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
         lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
         msg_box.add_widget(lbl)
-
         if not is_user:
             copy_btn = TabButton(text='📋 Копировать', size_hint_y=None, height=dp(30), bg_color_normal=(0.8, 0.85, 0.9, 1), bg_color_active=(0.7, 0.75, 0.8, 1), color=(0.2, 0.2, 0.2, 1), font_size='12sp')
             copy_btn.bind(on_release=lambda b: self.copy_text_to_clipboard(text))
             msg_box.add_widget(copy_btn)
-
         msg_box.height = lbl.height + (dp(35) if not is_user else dp(5))
         self.ids.chat_container.add_widget(msg_box)
         Clock.schedule_once(lambda dt: setattr(self.ids.chat_scroll, 'scroll_y', 0), 0.1)
@@ -701,31 +552,6 @@ class MainScreen(Screen):
         self.ids.chat_container.clear_widgets()
 
 # ============================================================
-# ОБРАБОТЧИК РЕЗУЛЬТАТА ANDROID
-# ============================================================
-if platform == 'android':
-    class FilePickerResult:
-        def __init__(self, screen):
-            self.screen = screen
-
-        def on_activity_result(self, requestCode, resultCode, intent):
-            if requestCode == 1001 and intent is not None:
-                try:
-                    data = intent.getData()
-                    if data is not None:
-                        path = self._get_path_from_uri(data)
-                        if path:
-                            Clock.schedule_once(lambda dt: self.screen.on_file_selected(path), 0)
-                except Exception as e:
-                    print(f"Ошибка файла: {e}")
-
-        def _get_path_from_uri(self, uri):
-            try:
-                return uri.toString()
-            except:
-                return None
-
-# ============================================================
 # API И ХРАНЕНИЕ
 # ============================================================
 def clean_text(raw_text):
@@ -733,7 +559,7 @@ def clean_text(raw_text):
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-        payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": "Убери все символы разметки. Только чистый текст."}, {"role": "user", "content": raw_text}]}
+        payload = {"model": "openai/gpt-oss-120b", "messages": [{"role": "system", "content": "Убери символы разметки. Только чистый текст."}, {"role": "user", "content": raw_text}]}
         resp = requests.post(url, json=payload, headers=headers, timeout=60)
         if resp.status_code == 200: return resp.json()["choices"][0]["message"]["content"].strip()
     except: pass
@@ -742,8 +568,6 @@ def clean_text(raw_text):
 def recognize_photo(filepath):
     url = "https://api.ocr.space/parse/image"
     payload = {'apikey': OCR_API_KEY, 'language': 'rus', 'scale': 'true'}
-    if filepath.startswith('content://'):
-        raise Exception("Прямая загрузка по content:// URI не поддерживается. Выберите файл из папки 'Загрузки'.")
     with open(filepath, 'rb') as f:
         resp = requests.post(url, data=payload, files={'file': f}, timeout=90)
     result = resp.json()
@@ -751,12 +575,14 @@ def recognize_photo(filepath):
     return result.get('ParsedResults', [{}])[0].get('ParsedText', '')
 
 def save_note(text):
+    global NOTES_FOLDER
     note_id = datetime.now().strftime("%Y%m%d_%H%M%S%f")
     title = text.strip().split('\n')[0][:40]
     data = {"id": note_id, "title": title, "date": datetime.now().strftime("%d.%m.%Y"), "text": text}
     with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
 
 def update_note(note_id, new_text):
+    global NOTES_FOLDER
     path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
     if os.path.exists(path):
         with open(path, 'r', encoding='utf-8') as f: data = json.load(f)
@@ -765,10 +591,12 @@ def update_note(note_id, new_text):
         with open(path, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False)
 
 def delete_note(note_id):
+    global NOTES_FOLDER
     path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
     if os.path.exists(path): os.remove(path)
 
 def get_all_notes():
+    global NOTES_FOLDER
     notes = []
     if not os.path.exists(NOTES_FOLDER): return notes
     for fname in sorted(os.listdir(NOTES_FOLDER), reverse=True):
@@ -788,10 +616,8 @@ def find_relevant_notes(question):
 def ask_groq(prompt, is_tutor=False, history=[]):
     system = "Ты ассистент. Отвечай на основе конспекта."
     if is_tutor:
-        system = "Ты ИИ-учитель. Твоя задача вести диалог по плану, задавать вопросы и проверять ответы ученика."
-    
+        system = "Ты ИИ-учитель. Твоя задача вести диалог по плану, задавать вопросы и проверять ответы."
     messages = [{"role": "system", "content": system}] + history + [{"role": "user", "content": prompt}]
-    
     url = "https://api.groq.com/openai/v1/chat/completions"
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
     payload = {"model": "openai/gpt-oss-120b", "messages": messages, "temperature": 0.5}
@@ -804,10 +630,10 @@ def ask_groq(prompt, is_tutor=False, history=[]):
 def answer_question(messages):
     last_q = messages[-1]["content"]
     context = find_relevant_notes(last_q)
-    if not context: return "В конспектах нет информации по этой теме."
+    if not context: return "В конспектах нет информации."
     system_prompt = (
         "Ты ассистент. Отвечай на вопрос, используя ТОЛЬКО текст из конспекта ниже.\n"
-        "Если информации нет, напиши 'В конспекте этой информации нет.', а затем добавь 'Дополнительная информация:'.\n"
+        "Если нет, напиши 'В конспекте этой информации нет.', а затем 'Дополнительная информация:'.\n"
         f"КОНСПЕКТ:\n{context}"
     )
     url = "https://api.groq.com/openai/v1/chat/completions"
@@ -822,16 +648,11 @@ def answer_question(messages):
 # ЗАПУСК
 # ============================================================
 class NotesApp(App):
-    theme_bg = get_color_from_hex(THEMES['light']['bg'])
-    theme_text = THEMES['light']['text']
-    theme_input_bg = (1, 1, 1, 1)
-
-    def on_start(self):
-        if platform == 'android':
-            request_permissions([Permission.READ_EXTERNAL_STORAGE, Permission.WRITE_EXTERNAL_STORAGE])
-
     def build(self):
-        Window.clearcolor = self.theme_bg
+        global NOTES_FOLDER
+        # Инициализируем папку ТОЛЬКО после старта App
+        NOTES_FOLDER = get_data_path("notes")
+        
         Builder.load_string(KV)
         sm = ScreenManager()
         sm.add_widget(MainScreen(name='main'))
