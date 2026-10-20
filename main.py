@@ -30,7 +30,7 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
-# ТВОЙ НОВЫЙ КЛЮЧ GROQ
+# ТВОЙ КЛЮЧ GROQ
 GROQ_API_KEY = "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"
 MODEL_NAME = "llama-3.3-70b-versatile"
 
@@ -42,6 +42,49 @@ def init_storage():
         NOTES_FOLDER = os.path.join(base, "notes")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
     except: NOTES_FOLDER = "."
+
+# ============================================================
+# БЕЗОПАСНЫЙ ЗАПРОС (С МАСКИРОВКОЙ ПОД БРАУЗЕР)
+# ============================================================
+def safe_url_request(url, json_data=None, headers=None):
+    try:
+        data = json_data.encode('utf-8') if json_data else None
+        
+        # Базовые заголовки
+        final_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+        }
+        if headers:
+            final_headers.update(headers)
+            
+        req = urllib.request.Request(url, data=data, headers=final_headers, method='POST' if data else 'GET')
+        with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
+            return response.read().decode('utf-8')
+    except urllib.error.HTTPError as e:
+        return f"Ошибка API ({e.code})"
+    except Exception as e:
+        return f"Ошибка сети: {str(e)}"
+
+# ============================================================
+# ФУНКЦИЯ ПРОВЕРКИ КЛЮЧА
+# ============================================================
+def check_groq_key():
+    """Проверяет, работает ли ключ и есть ли доступ к сети"""
+    url = "https://api.groq.com/openai/v1/models"
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+    response = safe_url_request(url, headers=headers)
+    
+    if response.startswith("Ошибка API (403)"):
+        return "❌ Ошибка 403: Groq блокирует ваш IP. Включите VPN и проверьте, что он работает для всех приложений."
+    elif response.startswith("Ошибка API (401)"):
+        return "❌ Ошибка 401: Ключ Groq недействителен. Создайте новый ключ."
+    elif response.startswith("Ошибка API"):
+        return f"❌ {response}"
+    elif "Ошибка сети" in response:
+        return f"❌ Нет связи с Groq. Проверьте интернет или VPN."
+    else:
+        return "✅ Ключ Groq работает!"
 
 # ============================================================
 # РАБОТА С КОНСПЕКТАМИ
@@ -78,20 +121,6 @@ def find_relevant_notes(question):
     return context[:6000]
 
 # ============================================================
-# БЕЗОПАСНЫЙ ЗАПРОС
-# ============================================================
-def safe_url_request(url, json_data=None, headers=None):
-    try:
-        data = json_data.encode('utf-8') if json_data else None
-        req = urllib.request.Request(url, data=data, headers=headers or {}, method='POST' if data else 'GET')
-        with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
-            return response.read().decode('utf-8')
-    except urllib.error.HTTPError as e:
-        return f"Ошибка API ({e.code})"
-    except Exception as e:
-        return f"Ошибка сети: {str(e)}"
-
-# ============================================================
 # ИНТЕРФЕЙС
 # ============================================================
 KV = """
@@ -105,7 +134,6 @@ KV = """
             id: content_manager
             transition: SlideTransition(direction='left', duration=0.2)
             
-            # === ЧАТ ===
             Screen:
                 name: 'chat'
                 BoxLayout:
@@ -142,7 +170,6 @@ KV = """
                             background_color: 0.15, 0.45, 0.85, 1
                             on_release: root.send_chat_message()
 
-            # === ЗАГРУЗКА ===
             Screen:
                 name: 'new'
                 BoxLayout:
@@ -186,7 +213,6 @@ KV = """
                         background_color: 0.2, 0.6, 0.4, 1
                         on_release: root.save_manual_text()
 
-            # === ОБУЧЕНИЕ ===
             Screen:
                 name: 'learn'
                 BoxLayout:
@@ -230,7 +256,6 @@ KV = """
                             background_color: 0.55, 0.3, 0.8, 1
                             on_release: root.send_learn_message()
 
-        # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
             size_hint_y: None
             height: dp(55)
@@ -271,6 +296,13 @@ class MainScreen(Screen):
     def setup_app(self, dt):
         init_storage()
         self.switch_nav('chat')
+        
+        # ПРОВЕРКА КЛЮЧА ПРИ СТАРТЕ
+        threading.Thread(target=self.check_key_async, daemon=True).start()
+
+    def check_key_async(self):
+        result = check_groq_key()
+        self.update_chat(answer=result, loading=None)
 
     def switch_nav(self, name):
         self.ids.content_manager.current = name
@@ -324,7 +356,6 @@ class MainScreen(Screen):
             self.ids.manual_text.text = ''
             self.ids.photo_status.text = 'Сохранено!'
 
-    # --- ЧАТ ---
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
@@ -373,7 +404,6 @@ class MainScreen(Screen):
             self.ids.chat_container.remove_widget(loading)
         self.add_simple_bubble(self.ids.chat_container, answer, is_user=False)
 
-    # --- ОБУЧЕНИЕ ---
     def process_learn_material(self):
         self.add_simple_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
         
