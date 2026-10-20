@@ -194,30 +194,33 @@ KV = """
                             background_color: 0.55, 0.3, 0.8, 1
                             on_release: root.send_learn_message()
 
-        # === НИЖНЯЯ ПАНЕЛЬ ===
+        # === НИЖНЯЯ ПАНЕЛЬ (ИСПРАВЛЕНО) ===
         BoxLayout:
             size_hint_y: None
             height: dp(55)
             spacing: dp(2)
             
             Button:
+                id: btn_nav_chat
                 text: 'Чат'
                 font_size: '14sp'
                 background_normal: ''
-                background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'chat' else 0.8, 0.8, 0.8, 1
-                on_release: root.ids.content_manager.current = 'chat'
+                background_color: 0.4, 0.4, 0.45, 1
+                on_release: root.switch_nav('chat')
             Button:
+                id: btn_nav_new
                 text: 'Загрузка'
                 font_size: '14sp'
                 background_normal: ''
-                background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'new' else 0.8, 0.8, 0.8, 1
-                on_release: root.ids.content_manager.current = 'new'
+                background_color: 0.4, 0.4, 0.45, 1
+                on_release: root.switch_nav('new')
             Button:
+                id: btn_nav_learn
                 text: 'Обучение'
                 font_size: '14sp'
                 background_normal: ''
-                background_color: 0.15, 0.45, 0.85, 1 if root.ids.content_manager.current == 'learn' else 0.8, 0.8, 0.8, 1
-                on_release: root.ids.content_manager.current = 'learn'
+                background_color: 0.4, 0.4, 0.45, 1
+                on_release: root.switch_nav('learn')
 """
 
 # ============================================================
@@ -231,6 +234,21 @@ class MainScreen(Screen):
 
     def setup_app(self, dt):
         init_storage()
+        # Устанавливаем начальную вкладку
+        self.switch_nav('chat')
+
+    def switch_nav(self, name):
+        self.ids.content_manager.current = name
+        
+        # Сброс цветов всех кнопок нижней панели
+        self.ids.btn_nav_chat.background_color = (0.4, 0.4, 0.45, 1)
+        self.ids.btn_nav_new.background_color = (0.4, 0.4, 0.45, 1)
+        self.ids.btn_nav_learn.background_color = (0.4, 0.4, 0.45, 1)
+        
+        # Подсветка активной
+        if name == 'chat': self.ids.btn_nav_chat.background_color = (0.15, 0.45, 0.85, 1)
+        elif name == 'new': self.ids.btn_nav_new.background_color = (0.15, 0.45, 0.85, 1)
+        elif name == 'learn': self.ids.btn_nav_learn.background_color = (0.15, 0.45, 0.85, 1)
 
     def process_photo_by_path(self):
         path = self.ids.photo_path.text.strip()
@@ -361,9 +379,8 @@ class MainScreen(Screen):
             self.ids.learn_container.remove_widget(loading)
         self.add_simple_bubble(self.ids.learn_container, answer, is_user=False)
 
-    # --- БЕЗОПАСНЫЙ ПУЗЫРЬ (Просто текст) ---
+    # --- ПУЗЫРЬ ---
     def add_simple_bubble(self, container, text, is_user):
-        # Выравнивание с помощью пустых Label
         layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
         
         lbl = Label(text=text, size_hint_y=None, text_size=(dp(250), None), 
@@ -381,7 +398,6 @@ class MainScreen(Screen):
         layout.height = lbl.height + dp(10)
         container.add_widget(layout)
         
-        # Анимация
         layout.opacity = 0
         Animation(opacity=1, d=0.2).start(layout)
         Clock.schedule_once(lambda dt: setattr(container, 'height', container.minimum_height), 0.1)
