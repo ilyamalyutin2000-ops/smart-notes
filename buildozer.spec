@@ -7,7 +7,7 @@ source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
 # Только проверенные библиотеки, без kivymd
-requirements = python3,kivy,requests
+requirements = python3,kivy
 
 orientation = portrait
 fullscreen = 0
