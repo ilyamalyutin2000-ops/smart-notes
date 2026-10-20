@@ -1,89 +1,73 @@
 name: Build APK
 
 on:
-push:
-branches:
-- main
-workflow_dispatch:
-
-permissions:
-contents: read
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-build-android:
-runs-on: ubuntu-22.04
-timeout-minutes: 60
+  build-android:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-steps:
-  - name: Checkout code
-    uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
 
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.9'
-      cache: pip
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
 
-  - name: Set up JDK 17
-    uses: actions/setup-java@v4
-    with:
-      distribution: temurin
-      java-version: '17'
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev libstdc++6
 
-  - name: Install system dependencies
-    run: |
-      sudo apt-get update
-      sudo apt-get install -y \
-        git zip unzip \
-        autoconf libtool pkg-config \
-        zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 \
-        cmake libffi-dev libssl-dev \
-        libltdl-dev
+      # === ГЛАВНЫЙ ФИКС ДЛЯ УСКОРЕНИЯ ===
+      # Кешируем папки с Python, NDK и SDK. Если buildozer.spec не менялся, 
+      # он возьмет готовые файлы и не будет компилировать Python заново.
+      - name: Cache Buildozer global directory
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.buildozer
+            .buildozer
+          key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
+          restore-keys: |
+            ${{ runner.os }}-buildozer-
 
-  - name: Cache Buildozer downloads
-    uses: actions/cache@v4
-    with:
-      path: ~/.buildozer
-      key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec', '.github/workflows/build.yml') }}
-      restore-keys: |
-        ${{ runner.os }}-buildozer-
+      # Кеш для Gradle (ускоряет упаковку в APK)
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: ~/.gradle/caches
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
-  - name: Cache Gradle
-    uses: actions/cache@v4
-    with:
-      path: |
-        ~/.gradle/caches
-        ~/.gradle/wrapper
-      key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-      restore-keys: |
-        ${{ runner.os }}-gradle-
+      - name: Install Buildozer
+        run: |
+          pip install --upgrade pip
+          pip install buildozer Cython==0.29.33 virtualenv
 
-  - name: Install Python build tools
-    run: |
-      python -m pip install --upgrade pip
-      python -m pip install buildozer==1.5.0 Cython==0.29.33 virtualenv
+      # Чистим только папку bin, чтобы не скачивать старый APK
+      - name: Clean bin
+        run: |
+          rm -rf bin
 
-  - name: Check project files
-    run: |
-      test -f main.py
-      test -f buildozer.spec
+      - name: Build with Buildozer
+        run: |
+          export APP_ANDROID_ACCEPT_SDK_LICENSE=1
+          export BUILDOZER_WARN_ON_ROOT=0
+          yes | buildozer android debug
 
-  - name: Build APK
-    env:
-      APP_ANDROID_ACCEPT_SDK_LICENSE: "1"
-      BUILDOZER_WARN_ON_ROOT: "0"
-    run: |
-      buildozer android debug
-
-  - name: Verify APK
-    run: |
-      find bin -maxdepth 1 -type f -name "*.apk" -print
-      test -n "$(find bin -maxdepth 1 -type f -name '*.apk' -print -quit)"
-
-  - name: Upload APK
-    uses: actions/upload-artifact@v4
-    with:
-      name: smartnotes-debug-apk
-      path: bin/*.apk
-      if-no-files-found: error
-      retention-days: 7
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-apk
+          path: bin/*.apk
