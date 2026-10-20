@@ -32,6 +32,9 @@ ssl_context.verify_mode = ssl.CERT_NONE
 OCR_API_KEY = "K86772432188957"
 OPENROUTER_API_KEY = "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"
 
+# ИСПРАВЛЕННАЯ МОДЕЛЬ (Бесплатная и актуальная)
+MODEL_NAME = "google/gemma-2-9b-it:free"
+
 NOTES_FOLDER = ""
 def init_storage():
     global NOTES_FOLDER
@@ -40,6 +43,47 @@ def init_storage():
         NOTES_FOLDER = os.path.join(base, "notes")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
     except: NOTES_FOLDER = "."
+
+# ============================================================
+# РАБОТА С КОНСПЕКТАМИ (Поиск релевантной информации)
+# ============================================================
+def get_all_notes():
+    notes = []
+    if not os.path.exists(NOTES_FOLDER): return notes
+    for fname in sorted(os.listdir(NOTES_FOLDER), reverse=True):
+        if fname.endswith('.json'):
+            try:
+                with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: 
+                    notes.append(json.load(f))
+            except: pass
+    return notes
+
+def find_relevant_notes(question):
+    """Ищет конспекты, в которых есть слова из вопроса"""
+    notes = get_all_notes()
+    if not notes: return ""
+    
+    # Разбиваем вопрос на слова (длиннее 3 символов)
+    words = [w.lower().strip('.,!?;:()[]{}"') for w in question.split() if len(w) > 3]
+    if not words: return ""
+    
+    scored_notes = []
+    for note in notes:
+        text_lower = note.get('text', '').lower()
+        # Считаем, сколько раз слова из вопроса встречаются в тексте конспекта
+        score = sum(text_lower.count(w) for w in words)
+        if score > 0:
+            scored_notes.append((score, note))
+            
+    # Сортируем по убыванию совпадений и берем топ-3
+    scored_notes.sort(key=lambda x: -x[0])
+    top_notes = [n[1] for n in scored_notes[:3]]
+    
+    if not top_notes: return ""
+    
+    # Формируем текст контекста
+    context = "\n\n---\n\n".join([f"Конспект: {n.get('title', '')}\n{n.get('text', '')}" for n in top_notes])
+    return context[:6000] # Ограничиваем длину, чтобы не превысить лимит токенов
 
 # ============================================================
 # БЕЗОПАСНЫЙ ЗАПРОС
@@ -93,7 +137,7 @@ KV = """
                         
                         TextInput:
                             id: chat_input
-                            hint_text: 'Сообщение...'
+                            hint_text: 'Вопрос по конспектам...'
                             multiline: False
                             padding: dp(10), dp(10)
                             on_text_validate: root.send_chat_message()
@@ -116,7 +160,7 @@ KV = """
                     
                     TextInput:
                         id: photo_path
-                        hint_text: 'Путь к фото'
+                        hint_text: 'Путь к фото (напр. /storage/emulated/0/Download/photo.jpg)'
                         size_hint_y: None
                         height: dp(50)
                         multiline: False
@@ -159,7 +203,7 @@ KV = """
                     spacing: dp(15)
                     
                     Button:
-                        text: 'Загрузить план обучения'
+                        text: 'Составить план обучения'
                         size_hint_y: None
                         height: dp(55)
                         background_normal: ''
@@ -182,7 +226,7 @@ KV = """
                         
                         TextInput:
                             id: learn_input
-                            hint_text: 'Ваш ответ...'
+                            hint_text: 'Ваш ответ учителю...'
                             multiline: False
                             on_text_validate: root.send_learn_message()
                             
@@ -194,7 +238,7 @@ KV = """
                             background_color: 0.55, 0.3, 0.8, 1
                             on_release: root.send_learn_message()
 
-        # === НИЖНЯЯ ПАНЕЛЬ (ИСПРАВЛЕНО) ===
+        # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
             size_hint_y: None
             height: dp(55)
@@ -234,22 +278,19 @@ class MainScreen(Screen):
 
     def setup_app(self, dt):
         init_storage()
-        # Устанавливаем начальную вкладку
         self.switch_nav('chat')
 
     def switch_nav(self, name):
         self.ids.content_manager.current = name
-        
-        # Сброс цветов всех кнопок нижней панели
         self.ids.btn_nav_chat.background_color = (0.4, 0.4, 0.45, 1)
         self.ids.btn_nav_new.background_color = (0.4, 0.4, 0.45, 1)
         self.ids.btn_nav_learn.background_color = (0.4, 0.4, 0.45, 1)
         
-        # Подсветка активной
         if name == 'chat': self.ids.btn_nav_chat.background_color = (0.15, 0.45, 0.85, 1)
         elif name == 'new': self.ids.btn_nav_new.background_color = (0.15, 0.45, 0.85, 1)
         elif name == 'learn': self.ids.btn_nav_learn.background_color = (0.15, 0.45, 0.85, 1)
 
+    # --- ЗАГРУЗКА ---
     def process_photo_by_path(self):
         path = self.ids.photo_path.text.strip()
         if not path:
@@ -276,7 +317,7 @@ class MainScreen(Screen):
                 
             result = json.loads(response)
             text = result.get('ParsedResults', [{}])[0].get('ParsedText', '')
-            self.update_photo_result(text, 'Готово!')
+            self.update_photo_result(text, 'Готово! Сохранено.')
             save_note(text)
         except Exception as e:
             self.update_photo_result(f'Ошибка: {e}', 'Ошибка')
@@ -300,14 +341,29 @@ class MainScreen(Screen):
         self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
         
-        loading = Label(text='...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
+        loading = Label(text='Ищу в конспектах...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
             try:
+                # 1. Ищем контекст в конспектах
+                context = find_relevant_notes(text)
+                
+                # 2. Формируем системный промпт (строго по конспектам)
+                if context:
+                    system_prompt = (
+                        "Ты ассистент. Отвечай на вопрос, используя ТОЛЬКО текст из конспекта ниже. "
+                        "Если в конспекте нет ответа, честно скажи: 'В конспекте этой информации нет'. "
+                        f"КОНСПЕКТ:\n{context}"
+                    )
+                else:
+                    system_prompt = "В сохраненных конспектах нет информации. Скажи пользователю, что нужно сначала загрузить конспект."
+                
+                messages = [{"role": "system", "content": system_prompt}] + self.chat_history
+                
                 url = "https://openrouter.ai/api/v1/chat/completions"
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
-                payload = json.dumps({"model": "meta-llama/llama-3-8b-instruct", "messages": self.chat_history})
+                payload = json.dumps({"model": MODEL_NAME, "messages": messages})
                 response = safe_url_request(url, payload, headers)
                 
                 if response.startswith("Ошибка"):
@@ -331,15 +387,15 @@ class MainScreen(Screen):
 
     # --- ОБУЧЕНИЕ ---
     def process_learn_material(self):
-        self.add_simple_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
+        self.add_simple_bubble(self.ids.learn_container, "Составляю план обучения...", is_user=False)
         
         def worker():
             try:
                 url = "https://openrouter.ai/api/v1/chat/completions"
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
                 payload = json.dumps({
-                    "model": "meta-llama/llama-3-8b-instruct",
-                    "messages": [{"role": "user", "content": "Составь план обучения. Задай первый вопрос."}]
+                    "model": MODEL_NAME,
+                    "messages": [{"role": "user", "content": "Ты ИИ-учитель. Составь краткий план обучения программированию. Задай первый вопрос."}]
                 })
                 response = safe_url_request(url, payload, headers)
                 result = json.loads(response)
@@ -361,8 +417,8 @@ class MainScreen(Screen):
                 url = "https://openrouter.ai/api/v1/chat/completions"
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
                 payload = json.dumps({
-                    "model": "meta-llama/llama-3-8b-instruct",
-                    "messages": [{"role": "user", "content": f"Мой ответ: {text}"}]
+                    "model": MODEL_NAME,
+                    "messages": [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
                 })
                 response = safe_url_request(url, payload, headers)
                 result = json.loads(response)
