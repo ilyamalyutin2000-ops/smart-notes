@@ -30,8 +30,8 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
-# ТВОЙ КЛЮЧ GROQ УЖЕ ВСТАВЛЕН
-GROQ_API_KEY = "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"
+# ТВОЙ НОВЫЙ КЛЮЧ GROQ
+GROQ_API_KEY = "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"
 MODEL_NAME = "llama-3.3-70b-versatile"
 
 NOTES_FOLDER = ""
