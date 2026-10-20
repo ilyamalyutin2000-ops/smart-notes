@@ -30,10 +30,9 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
-OPENROUTER_API_KEY = "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"
-
-# ИСПРАВЛЕННАЯ МОДЕЛЬ (Бесплатная и актуальная)
-MODEL_NAME = "google/gemma-2-9b-it:free"
+# ТВОЙ КЛЮЧ GROQ УЖЕ ВСТАВЛЕН
+GROQ_API_KEY = "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"
+MODEL_NAME = "llama-3.3-70b-versatile"
 
 NOTES_FOLDER = ""
 def init_storage():
@@ -45,7 +44,7 @@ def init_storage():
     except: NOTES_FOLDER = "."
 
 # ============================================================
-# РАБОТА С КОНСПЕКТАМИ (Поиск релевантной информации)
+# РАБОТА С КОНСПЕКТАМИ
 # ============================================================
 def get_all_notes():
     notes = []
@@ -59,31 +58,24 @@ def get_all_notes():
     return notes
 
 def find_relevant_notes(question):
-    """Ищет конспекты, в которых есть слова из вопроса"""
     notes = get_all_notes()
     if not notes: return ""
-    
-    # Разбиваем вопрос на слова (длиннее 3 символов)
     words = [w.lower().strip('.,!?;:()[]{}"') for w in question.split() if len(w) > 3]
     if not words: return ""
     
     scored_notes = []
     for note in notes:
         text_lower = note.get('text', '').lower()
-        # Считаем, сколько раз слова из вопроса встречаются в тексте конспекта
         score = sum(text_lower.count(w) for w in words)
         if score > 0:
             scored_notes.append((score, note))
             
-    # Сортируем по убыванию совпадений и берем топ-3
     scored_notes.sort(key=lambda x: -x[0])
     top_notes = [n[1] for n in scored_notes[:3]]
-    
     if not top_notes: return ""
     
-    # Формируем текст контекста
     context = "\n\n---\n\n".join([f"Конспект: {n.get('title', '')}\n{n.get('text', '')}" for n in top_notes])
-    return context[:6000] # Ограничиваем длину, чтобы не превысить лимит токенов
+    return context[:6000]
 
 # ============================================================
 # БЕЗОПАСНЫЙ ЗАПРОС
@@ -160,7 +152,7 @@ KV = """
                     
                     TextInput:
                         id: photo_path
-                        hint_text: 'Путь к фото (напр. /storage/emulated/0/Download/photo.jpg)'
+                        hint_text: 'Путь к фото'
                         size_hint_y: None
                         height: dp(50)
                         multiline: False
@@ -290,7 +282,6 @@ class MainScreen(Screen):
         elif name == 'new': self.ids.btn_nav_new.background_color = (0.15, 0.45, 0.85, 1)
         elif name == 'learn': self.ids.btn_nav_learn.background_color = (0.15, 0.45, 0.85, 1)
 
-    # --- ЗАГРУЗКА ---
     def process_photo_by_path(self):
         path = self.ids.photo_path.text.strip()
         if not path:
@@ -346,23 +337,20 @@ class MainScreen(Screen):
         
         def worker():
             try:
-                # 1. Ищем контекст в конспектах
                 context = find_relevant_notes(text)
-                
-                # 2. Формируем системный промпт (строго по конспектам)
                 if context:
                     system_prompt = (
                         "Ты ассистент. Отвечай на вопрос, используя ТОЛЬКО текст из конспекта ниже. "
-                        "Если в конспекте нет ответа, честно скажи: 'В конспекте этой информации нет'. "
+                        "Если в конспекте нет ответа, скажи: 'В конспекте этой информации нет'. "
                         f"КОНСПЕКТ:\n{context}"
                     )
                 else:
-                    system_prompt = "В сохраненных конспектах нет информации. Скажи пользователю, что нужно сначала загрузить конспект."
+                    system_prompt = "В сохраненных конспектах нет информации."
                 
                 messages = [{"role": "system", "content": system_prompt}] + self.chat_history
                 
-                url = "https://openrouter.ai/api/v1/chat/completions"
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
                 payload = json.dumps({"model": MODEL_NAME, "messages": messages})
                 response = safe_url_request(url, payload, headers)
                 
@@ -387,15 +375,15 @@ class MainScreen(Screen):
 
     # --- ОБУЧЕНИЕ ---
     def process_learn_material(self):
-        self.add_simple_bubble(self.ids.learn_container, "Составляю план обучения...", is_user=False)
+        self.add_simple_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
         
         def worker():
             try:
-                url = "https://openrouter.ai/api/v1/chat/completions"
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
                 payload = json.dumps({
                     "model": MODEL_NAME,
-                    "messages": [{"role": "user", "content": "Ты ИИ-учитель. Составь краткий план обучения программированию. Задай первый вопрос."}]
+                    "messages": [{"role": "user", "content": "Ты ИИ-учитель. Составь план обучения. Задай первый вопрос."}]
                 })
                 response = safe_url_request(url, payload, headers)
                 result = json.loads(response)
@@ -414,11 +402,11 @@ class MainScreen(Screen):
         
         def worker():
             try:
-                url = "https://openrouter.ai/api/v1/chat/completions"
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
                 payload = json.dumps({
                     "model": MODEL_NAME,
-                    "messages": [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
+                    "messages": [{"role": "user", "content": f"Мой ответ: {text}"}]
                 })
                 response = safe_url_request(url, payload, headers)
                 result = json.loads(response)
@@ -435,10 +423,8 @@ class MainScreen(Screen):
             self.ids.learn_container.remove_widget(loading)
         self.add_simple_bubble(self.ids.learn_container, answer, is_user=False)
 
-    # --- ПУЗЫРЬ ---
     def add_simple_bubble(self, container, text, is_user):
         layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
-        
         lbl = Label(text=text, size_hint_y=None, text_size=(dp(250), None), 
                     halign='right' if is_user else 'left', valign='top',
                     color=(0, 0, 0.7, 1) if is_user else (0, 0, 0, 1), markup=True)
@@ -453,7 +439,6 @@ class MainScreen(Screen):
             
         layout.height = lbl.height + dp(10)
         container.add_widget(layout)
-        
         layout.opacity = 0
         Animation(opacity=1, d=0.2).start(layout)
         Clock.schedule_once(lambda dt: setattr(container, 'height', container.minimum_height), 0.1)
