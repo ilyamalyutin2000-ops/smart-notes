@@ -30,9 +30,10 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
-# ТВОЙ КЛЮЧ GROQ
-GROQ_API_KEY = "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"
-MODEL_NAME = "llama-3.3-70b-versatile"
+
+# ТВОЙ ТОКЕН HUGGING FACE
+HF_TOKEN = "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"
+MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
 
 NOTES_FOLDER = ""
 def init_storage():
@@ -42,49 +43,6 @@ def init_storage():
         NOTES_FOLDER = os.path.join(base, "notes")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
     except: NOTES_FOLDER = "."
-
-# ============================================================
-# БЕЗОПАСНЫЙ ЗАПРОС (С МАСКИРОВКОЙ ПОД БРАУЗЕР)
-# ============================================================
-def safe_url_request(url, json_data=None, headers=None):
-    try:
-        data = json_data.encode('utf-8') if json_data else None
-        
-        # Базовые заголовки
-        final_headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json",
-        }
-        if headers:
-            final_headers.update(headers)
-            
-        req = urllib.request.Request(url, data=data, headers=final_headers, method='POST' if data else 'GET')
-        with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
-            return response.read().decode('utf-8')
-    except urllib.error.HTTPError as e:
-        return f"Ошибка API ({e.code})"
-    except Exception as e:
-        return f"Ошибка сети: {str(e)}"
-
-# ============================================================
-# ФУНКЦИЯ ПРОВЕРКИ КЛЮЧА
-# ============================================================
-def check_groq_key():
-    """Проверяет, работает ли ключ и есть ли доступ к сети"""
-    url = "https://api.groq.com/openai/v1/models"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
-    response = safe_url_request(url, headers=headers)
-    
-    if response.startswith("Ошибка API (403)"):
-        return "❌ Ошибка 403: Groq блокирует ваш IP. Включите VPN и проверьте, что он работает для всех приложений."
-    elif response.startswith("Ошибка API (401)"):
-        return "❌ Ошибка 401: Ключ Groq недействителен. Создайте новый ключ."
-    elif response.startswith("Ошибка API"):
-        return f"❌ {response}"
-    elif "Ошибка сети" in response:
-        return f"❌ Нет связи с Groq. Проверьте интернет или VPN."
-    else:
-        return "✅ Ключ Groq работает!"
 
 # ============================================================
 # РАБОТА С КОНСПЕКТАМИ
@@ -118,7 +76,39 @@ def find_relevant_notes(question):
     if not top_notes: return ""
     
     context = "\n\n---\n\n".join([f"Конспект: {n.get('title', '')}\n{n.get('text', '')}" for n in top_notes])
-    return context[:6000]
+    return context[:4000]
+
+# ============================================================
+# ЗАПРОС К HUGGING FACE
+# ============================================================
+def safe_hf_request(messages):
+    try:
+        url = f"https://api-inference.huggingface.co/models/{MODEL_NAME}/v1/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {HF_TOKEN}"
+        }
+        
+        payload = {
+            "model": MODEL_NAME,
+            "messages": messages,
+            "temperature": 0.5,
+            "max_tokens": 1500
+        }
+        
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(url, data=data, headers=headers, method='POST')
+        
+        with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return result["choices"][0]["message"]["content"].strip()
+            
+    except urllib.error.HTTPError as e:
+        if e.code == 503:
+            return "Модель загружается на сервере. Подожди 20 секунд и попробуй снова."
+        return f"Ошибка API HF ({e.code})"
+    except Exception as e:
+        return f"Ошибка сети: {str(e)}"
 
 # ============================================================
 # ИНТЕРФЕЙС
@@ -134,6 +124,7 @@ KV = """
             id: content_manager
             transition: SlideTransition(direction='left', duration=0.2)
             
+            # === ЧАТ ===
             Screen:
                 name: 'chat'
                 BoxLayout:
@@ -170,6 +161,7 @@ KV = """
                             background_color: 0.15, 0.45, 0.85, 1
                             on_release: root.send_chat_message()
 
+            # === ЗАГРУЗКА ===
             Screen:
                 name: 'new'
                 BoxLayout:
@@ -213,6 +205,7 @@ KV = """
                         background_color: 0.2, 0.6, 0.4, 1
                         on_release: root.save_manual_text()
 
+            # === ОБУЧЕНИЕ ===
             Screen:
                 name: 'learn'
                 BoxLayout:
@@ -244,7 +237,7 @@ KV = """
                         
                         TextInput:
                             id: learn_input
-                            hint_text: 'Ваш ответ учителю...'
+                            hint_text: 'Ваш ответ...'
                             multiline: False
                             on_text_validate: root.send_learn_message()
                             
@@ -256,6 +249,7 @@ KV = """
                             background_color: 0.55, 0.3, 0.8, 1
                             on_release: root.send_learn_message()
 
+        # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
             size_hint_y: None
             height: dp(55)
@@ -296,13 +290,6 @@ class MainScreen(Screen):
     def setup_app(self, dt):
         init_storage()
         self.switch_nav('chat')
-        
-        # ПРОВЕРКА КЛЮЧА ПРИ СТАРТЕ
-        threading.Thread(target=self.check_key_async, daemon=True).start()
-
-    def check_key_async(self):
-        result = check_groq_key()
-        self.update_chat(answer=result, loading=None)
 
     def switch_nav(self, name):
         self.ids.content_manager.current = name
@@ -333,12 +320,10 @@ class MainScreen(Screen):
             payload = f"apikey={OCR_API_KEY}&language=rus&base64Image=data:image/jpeg;base64,{encoded}"
             headers = {"Content-Type": "application/x-www-form-urlencoded"}
             
-            response = safe_url_request(url, payload, headers)
-            if response.startswith("Ошибка"):
-                self.update_photo_result(response, 'Ошибка')
-                return
+            req = urllib.request.Request(url, data=payload.encode('utf-8'), headers=headers, method='POST')
+            with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
+                result = json.loads(response.read().decode('utf-8'))
                 
-            result = json.loads(response)
             text = result.get('ParsedResults', [{}])[0].get('ParsedText', '')
             self.update_photo_result(text, 'Готово! Сохранено.')
             save_note(text)
@@ -356,6 +341,7 @@ class MainScreen(Screen):
             self.ids.manual_text.text = ''
             self.ids.photo_status.text = 'Сохранено!'
 
+    # --- ЧАТ ---
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
@@ -363,7 +349,7 @@ class MainScreen(Screen):
         self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
         
-        loading = Label(text='Ищу в конспектах...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
+        loading = Label(text='Qwen думает (первый раз может быть долго)...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
@@ -379,19 +365,10 @@ class MainScreen(Screen):
                     system_prompt = "В сохраненных конспектах нет информации."
                 
                 messages = [{"role": "system", "content": system_prompt}] + self.chat_history
+                answer = safe_hf_request(messages)
                 
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-                payload = json.dumps({"model": MODEL_NAME, "messages": messages})
-                response = safe_url_request(url, payload, headers)
-                
-                if response.startswith("Ошибка"):
-                    self.update_chat(answer=response, loading=loading)
-                    return
-                    
-                result = json.loads(response)
-                answer = result["choices"][0]["message"]["content"].strip()
-                self.chat_history.append({'role': 'assistant', 'content': answer})
+                if answer:
+                    self.chat_history.append({'role': 'assistant', 'content': answer})
                 self.update_chat(answer=answer, loading=loading)
             except Exception as e:
                 self.update_chat(answer=f"Ошибка: {e}", loading=loading)
@@ -404,20 +381,14 @@ class MainScreen(Screen):
             self.ids.chat_container.remove_widget(loading)
         self.add_simple_bubble(self.ids.chat_container, answer, is_user=False)
 
+    # --- ОБУЧЕНИЕ ---
     def process_learn_material(self):
         self.add_simple_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
         
         def worker():
             try:
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-                payload = json.dumps({
-                    "model": MODEL_NAME,
-                    "messages": [{"role": "user", "content": "Ты ИИ-учитель. Составь план обучения. Задай первый вопрос."}]
-                })
-                response = safe_url_request(url, payload, headers)
-                result = json.loads(response)
-                answer = result["choices"][0]["message"]["content"].strip()
+                messages = [{"role": "user", "content": "Ты ИИ-учитель. Составь план обучения программированию. Задай первый вопрос."}]
+                answer = safe_hf_request(messages)
                 self.update_learn(answer=answer, loading=None)
             except Exception as e:
                 self.update_learn(answer=f"Ошибка: {e}", loading=None)
@@ -432,15 +403,8 @@ class MainScreen(Screen):
         
         def worker():
             try:
-                url = "https://api.groq.com/openai/v1/chat/completions"
-                headers = {"Content-Type": "application/json", "Authorization": f"Bearer {GROQ_API_KEY}"}
-                payload = json.dumps({
-                    "model": MODEL_NAME,
-                    "messages": [{"role": "user", "content": f"Мой ответ: {text}"}]
-                })
-                response = safe_url_request(url, payload, headers)
-                result = json.loads(response)
-                answer = result["choices"][0]["message"]["content"].strip()
+                messages = [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
+                answer = safe_hf_request(messages)
                 self.update_learn(answer=answer, loading=None)
             except Exception as e:
                 self.update_learn(answer=f"Ошибка: {e}", loading=None)
