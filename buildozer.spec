@@ -6,6 +6,7 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
+# ТОЛЬКО САМОЕ НЕОБХОДИМОЕ
 requirements = python3,kivy
 
 orientation = portrait
