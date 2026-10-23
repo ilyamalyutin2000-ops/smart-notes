@@ -55,7 +55,7 @@ def init_storage():
         CACHE_FILE = "chat_cache.json"
 
 # ============================================================
-# РАБОТА С КЭШЕМ (История ответов)
+# РАБОТА С КЭШЕМ
 # ============================================================
 def load_cache():
     if not os.path.exists(CACHE_FILE): return {}
@@ -88,7 +88,7 @@ def check_internet():
     except: return False
 
 # ============================================================
-# ЛОКАЛЬНЫЙ ПОИСК (Если нет интернета и нет в кэше)
+# ЛОКАЛЬНЫЙ ПОИСК
 # ============================================================
 def local_search(question):
     notes = get_all_notes()
@@ -418,7 +418,6 @@ class MainScreen(Screen):
             self.ids.manual_text.text = ''
             self.ids.photo_status.text = 'Сохранено!'
 
-    # --- ЧАТ ---
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
@@ -497,7 +496,6 @@ class MainScreen(Screen):
             self.ids.chat_container.remove_widget(loading)
         self.add_simple_bubble(self.ids.chat_container, answer, is_user=False)
 
-    # --- ОБУЧЕНИЕ ---
     def process_learn_material(self):
         self.add_simple_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
         
@@ -516,4 +514,77 @@ class MainScreen(Screen):
 
     def send_learn_message(self):
         text = self.ids.learn_input.text.strip()
-        if not t
+        if not text: return
+        self.ids.learn_input.text = ''
+        self.add_simple_bubble(self.ids.learn_container, text, is_user=True)
+        
+        def worker():
+            try:
+                if not check_internet():
+                    self.update_learn(answer="Нет интернета для ответа учителю.", loading=None)
+                    return
+                messages = [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
+                answer = safe_openrouter_request(messages)
+                self.update_learn(answer=answer, loading=None)
+            except Exception as e:
+                self.update_learn(answer=f"Ошибка: {e}", loading=None)
+                
+        threading.Thread(target=worker, daemon=True).start()
+
+    @mainthread
+    def update_learn(self, answer, loading):
+        if loading and loading.parent:
+            self.ids.learn_container.remove_widget(loading)
+        self.add_simple_bubble(self.ids.learn_container, answer, is_user=False)
+
+    def add_simple_bubble(self, container, text, is_user):
+        layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
+        
+        lbl = Label(
+            text=text, 
+            size_hint_y=None, 
+            text_size=(dp(250), None), 
+            halign='right' if is_user else 'left', 
+            valign='top',
+            color=(0, 0, 0.7, 1) if is_user else (0, 0, 0, 1), 
+            markup=True
+        )
+        
+        def update_height(instance, texture_size):
+            instance.height = texture_size[1]
+            layout.height = instance.height + dp(10)
+            container.height = container.minimum_height
+
+        lbl.bind(texture_size=update_height)
+        
+        if is_user:
+            layout.add_widget(Label(size_hint_x=0.2))
+            layout.add_widget(lbl)
+        else:
+            layout.add_widget(lbl)
+            layout.add_widget(Label(size_hint_x=0.2))
+            
+        layout.height = lbl.height + dp(10)
+        container.add_widget(layout)
+        
+        layout.opacity = 0
+        Animation(opacity=1, d=0.2).start(layout)
+        Clock.schedule_once(lambda dt: setattr(container, 'height', container.minimum_height), 0.1)
+
+def save_note(text):
+    try:
+        note_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        data = {"id": note_id, "title": text[:20], "text": text}
+        with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: 
+            json.dump(data, f, ensure_ascii=False)
+    except Exception as e: print(e)
+
+class NotesApp(App):
+    def build(self):
+        Builder.load_string(KV)
+        sm = ScreenManager()
+        sm.add_widget(MainScreen(name='main'))
+        return sm
+
+if __name__ == "__main__":
+    NotesApp().run()
