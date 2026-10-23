@@ -1,52 +1,20 @@
-name: Build APK
+[app]
+title = Умный конспект
+package.name = smartnotes
+package.domain = org.smartnotes
+source.dir = .
+source.include_exts = py,png,jpg,kv,atlas,json
+version = 0.1
 
-on:
-  push:
-    branches: [ main ]
-  workflow_dispatch:
+requirements = python3,kivy
 
-jobs:
-  build-android:
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.9'
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo5 cmake libffi-dev libssl-dev libstdc++6
-
-      - name: Install Buildozer
-        run: |
-          pip install --upgrade pip
-          pip install buildozer Cython==0.29.33 virtualenv
-
-      - name: Clean everything
-        run: |
-          rm -rf .buildozer
-          rm -rf ~/.buildozer
-          rm -rf bin
-
-      - name: Build with Buildozer
-        run: |
-          export APP_ANDROID_ACCEPT_SDK_LICENSE=1
-          export BUILDOZER_WARN_ON_ROOT=0
-          yes | buildozer android debug
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: smart-notes-apk
-          path: bin/*.apk
+orientation = portrait
+fullscreen = 0
+android.permissions = INTERNET, ACCESS_NETWORK_STATE
+android.api = 33
+android.minapi = 21
+android.ndk = 25b
+android.archs = arm64-v8a
+android.accept_sdk_license = True
+android.ndk_api = 21
+warn_on_root = 0
