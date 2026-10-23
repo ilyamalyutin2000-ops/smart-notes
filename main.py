@@ -31,9 +31,9 @@ ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
 
-# ТВОЙ ТОКЕН HUGGING FACE
-HF_TOKEN = "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"
-MODEL_NAME = "Qwen/Qwen2.5-7B-Instruct"
+# БЕЗОПАСНОЕ ПОЛУЧЕНИЕ КЛЮЧА ИЗ GITHUB SECRETS
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_KEY", "")
+MODEL_NAME = "openrouter/free"
 
 NOTES_FOLDER = ""
 def init_storage():
@@ -79,14 +79,17 @@ def find_relevant_notes(question):
     return context[:4000]
 
 # ============================================================
-# ЗАПРОС К HUGGING FACE
+# ЗАПРОС К OPENROUTER
 # ============================================================
-def safe_hf_request(messages):
+def safe_openrouter_request(messages):
+    if not OPENROUTER_API_KEY:
+        return "Ошибка: Ключ API не найден. Проверьте настройки GitHub Secrets."
+        
     try:
-        url = f"https://api-inference.huggingface.co/models/{MODEL_NAME}/v1/chat/completions"
+        url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {HF_TOKEN}"
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}"
         }
         
         payload = {
@@ -104,14 +107,14 @@ def safe_hf_request(messages):
             return result["choices"][0]["message"]["content"].strip()
             
     except urllib.error.HTTPError as e:
-        if e.code == 503:
-            return "Модель загружается на сервере. Подожди 20 секунд и попробуй снова."
-        return f"Ошибка API HF ({e.code})"
+        if e.code == 429:
+            return "Лимит запросов. Подожди минуту и попробуй снова."
+        return f"Ошибка API OpenRouter ({e.code})"
     except Exception as e:
         return f"Ошибка сети: {str(e)}"
 
 # ============================================================
-# ИНТЕРФЕЙС
+# ИНТЕРФЕЙС (KV)
 # ============================================================
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
@@ -349,7 +352,7 @@ class MainScreen(Screen):
         self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
         
-        loading = Label(text='Qwen думает (первый раз может быть долго)...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
+        loading = Label(text='Думаю...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
@@ -365,7 +368,7 @@ class MainScreen(Screen):
                     system_prompt = "В сохраненных конспектах нет информации."
                 
                 messages = [{"role": "system", "content": system_prompt}] + self.chat_history
-                answer = safe_hf_request(messages)
+                answer = safe_openrouter_request(messages)
                 
                 if answer:
                     self.chat_history.append({'role': 'assistant', 'content': answer})
@@ -388,7 +391,7 @@ class MainScreen(Screen):
         def worker():
             try:
                 messages = [{"role": "user", "content": "Ты ИИ-учитель. Составь план обучения программированию. Задай первый вопрос."}]
-                answer = safe_hf_request(messages)
+                answer = safe_openrouter_request(messages)
                 self.update_learn(answer=answer, loading=None)
             except Exception as e:
                 self.update_learn(answer=f"Ошибка: {e}", loading=None)
@@ -404,7 +407,7 @@ class MainScreen(Screen):
         def worker():
             try:
                 messages = [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
-                answer = safe_hf_request(messages)
+                answer = safe_openrouter_request(messages)
                 self.update_learn(answer=answer, loading=None)
             except Exception as e:
                 self.update_learn(answer=f"Ошибка: {e}", loading=None)
