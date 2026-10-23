@@ -17,16 +17,14 @@ from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
-from kivy.core.window import Window # <-- ДОБАВЛЕНО ДЛЯ КЛАВИАТУРЫ
+from kivy.core.window import Window
 from kivy.animation import Animation
 
 # ============================================================
 # НАСТРОЙКА
 # ============================================================
 Window.clearcolor = get_color_from_hex('#F4F6F9')
-
-# ФИКС КЛАВИАТУРЫ: окно сдвигается вверх, чтобы поле ввода было видно
-Window.softinput_mode = 'below_target' 
+Window.softinput_mode = 'below_target'
 
 ssl_context = ssl.create_default_context()
 ssl_context.check_hostname = False
@@ -43,13 +41,84 @@ OPENROUTER_API_KEY = get_key()
 MODEL_NAME = "openrouter/free"
 
 NOTES_FOLDER = ""
+CACHE_FILE = ""
+
 def init_storage():
-    global NOTES_FOLDER
+    global NOTES_FOLDER, CACHE_FILE
     try:
         base = App.get_running_app().user_data_dir
         NOTES_FOLDER = os.path.join(base, "notes")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
-    except: NOTES_FOLDER = "."
+        CACHE_FILE = os.path.join(base, "chat_cache.json")
+    except: 
+        NOTES_FOLDER = "."
+        CACHE_FILE = "chat_cache.json"
+
+# ============================================================
+# РАБОТА С КЭШЕМ (История ответов)
+# ============================================================
+def load_cache():
+    if not os.path.exists(CACHE_FILE): return {}
+    try:
+        with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except: return {}
+
+def save_to_cache(question, answer):
+    cache = load_cache()
+    key = question.strip().lower() 
+    cache[key] = answer
+    try:
+        with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache, f, ensure_ascii=False)
+    except: pass
+
+def get_from_cache(question):
+    cache = load_cache()
+    key = question.strip().lower()
+    return cache.get(key, None)
+
+# ============================================================
+# ПРОВЕРКА ИНТЕРНЕТА
+# ============================================================
+def check_internet():
+    try:
+        urllib.request.urlopen("https://8.8.8.8", timeout=3, context=ssl_context)
+        return True
+    except: return False
+
+# ============================================================
+# ЛОКАЛЬНЫЙ ПОИСК (Если нет интернета и нет в кэше)
+# ============================================================
+def local_search(question):
+    notes = get_all_notes()
+    if not notes: return "У вас пока нет сохраненных конспектов."
+    
+    words = [w.lower().strip('.,!?;:()[]{}"') for w in question.split() if len(w) > 3]
+    if not words: return "Вопрос слишком короткий."
+    
+    best_notes = []
+    for note in notes:
+        text_lower = note.get('text', '').lower()
+        score = sum(text_lower.count(w) for w in words)
+        if score > 0:
+            best_notes.append((score, note.get('text', '')))
+            
+    if not best_notes:
+        return "В ваших конспектах нет информации по этому вопросу (нет интернета для запроса к ИИ)."
+        
+    best_notes.sort(key=lambda x: -x[0])
+    top_text = best_notes[0][1]
+    
+    first_word = words[0]
+    idx = top_text.lower().find(first_word)
+    if idx == -1: idx = 0
+    
+    start = max(0, idx - 150)
+    end = min(len(top_text), idx + 350)
+    snippet = top_text[start:end].strip()
+    
+    return f"[Офлайн-режим] Нашел в конспекте:\n\n...{snippet}...\n\n(Подключите интернет для полного ответа от ИИ)"
 
 # ============================================================
 # РАБОТА С КОНСПЕКТАМИ
@@ -111,11 +180,9 @@ def safe_openrouter_request(messages):
             return result["choices"][0]["message"]["content"].strip()
             
     except urllib.error.HTTPError as e:
-        if e.code == 429:
-            return "Лимит запросов. Подожди минуту и попробуй снова."
-        return f"Ошибка API OpenRouter ({e.code})"
+        return f"Ошибка API ({e.code})"
     except Exception as e:
-        return f"Ошибка сети: {str(e)}"
+        return f"Ошибка: {str(e)}"
 
 # ============================================================
 # ИНТЕРФЕЙС
@@ -157,9 +224,8 @@ KV = """
                             id: chat_input
                             hint_text: 'Вопрос по конспектам...'
                             multiline: False
-                            padding: dp(10), dp(10)
-                            # ВКЛЮЧАЕМ Т9 (автокоррекцию)
                             input_type: 'text'
+                            padding: dp(10), dp(10)
                             on_text_validate: root.send_chat_message()
                             
                         Button:
@@ -248,7 +314,6 @@ KV = """
                             id: learn_input
                             hint_text: 'Ваш ответ...'
                             multiline: False
-                            # ВКЛЮЧАЕМ Т9 (автокоррекцию)
                             input_type: 'text'
                             on_text_validate: root.send_learn_message()
                             
@@ -296,7 +361,7 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.chat_history = []
-        self.waiting_for_continue = False # Флаг для дополнения ответа
+        self.waiting_for_continue = False
         Clock.schedule_once(self.setup_app, 0.5)
 
     def setup_app(self, dt):
@@ -359,7 +424,6 @@ class MainScreen(Screen):
         if not text: return
         self.ids.chat_input.text = ''
         
-        # Проверка на "да" для дополнения
         if self.waiting_for_continue and text.lower() in ['да', 'yes', 'конечно']:
             self.waiting_for_continue = False
             self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
@@ -370,6 +434,9 @@ class MainScreen(Screen):
             
             def worker():
                 try:
+                    if not check_internet():
+                        self.update_chat(answer="Нет интернета для дополнения ответа.", loading=loading)
+                        return
                     messages = self.chat_history
                     answer = safe_openrouter_request(messages)
                     if answer:
@@ -380,7 +447,6 @@ class MainScreen(Screen):
             threading.Thread(target=worker, daemon=True).start()
             return
         
-        # Обычный запрос
         self.waiting_for_continue = False
         self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
@@ -390,6 +456,16 @@ class MainScreen(Screen):
         
         def worker():
             try:
+                cached_answer = get_from_cache(text)
+                if cached_answer:
+                    self.update_chat(answer=f"📁 [Из памяти]\n\n{cached_answer}", loading=loading)
+                    return
+
+                if not check_internet():
+                    answer = local_search(text)
+                    self.update_chat(answer=answer, loading=loading)
+                    return
+
                 context = find_relevant_notes(text)
                 if context:
                     system_prompt = (
@@ -403,11 +479,11 @@ class MainScreen(Screen):
                 messages = [{"role": "system", "content": system_prompt}] + self.chat_history
                 answer = safe_openrouter_request(messages)
                 
-                if answer:
-                    # ДОБАВЛЯЕМ ПРЕДЛОЖЕНИЕ ДОПОЛНИТЬ
+                if answer and not answer.startswith("Ошибка"):
+                    save_to_cache(text, answer)
                     answer += "\n\nЕсли нужно дополнить ответ, напишите «да»."
                     self.chat_history.append({'role': 'assistant', 'content': answer})
-                    self.waiting_for_continue = True # Ждем "да"
+                    self.waiting_for_continue = True
                     
                 self.update_chat(answer=answer, loading=loading)
             except Exception as e:
@@ -427,6 +503,9 @@ class MainScreen(Screen):
         
         def worker():
             try:
+                if not check_internet():
+                    self.update_learn(answer="Нет интернета для составления плана обучения.", loading=None)
+                    return
                 messages = [{"role": "user", "content": "Ты ИИ-учитель. Составь план обучения программированию. Задай первый вопрос."}]
                 answer = safe_openrouter_request(messages)
                 self.update_learn(answer=answer, loading=None)
@@ -437,60 +516,4 @@ class MainScreen(Screen):
 
     def send_learn_message(self):
         text = self.ids.learn_input.text.strip()
-        if not text: return
-        self.ids.learn_input.text = ''
-        self.add_simple_bubble(self.ids.learn_container, text, is_user=True)
-        
-        def worker():
-            try:
-                messages = [{"role": "user", "content": f"Мой ответ: {text}. Оцени и задай следующий вопрос."}]
-                answer = safe_openrouter_request(messages)
-                self.update_learn(answer=answer, loading=None)
-            except Exception as e:
-                self.update_learn(answer=f"Ошибка: {e}", loading=None)
-                
-        threading.Thread(target=worker, daemon=True).start()
-
-    @mainthread
-    def update_learn(self, answer, loading):
-        if loading and loading.parent:
-            self.ids.learn_container.remove_widget(loading)
-        self.add_simple_bubble(self.ids.learn_container, answer, is_user=False)
-
-    def add_simple_bubble(self, container, text, is_user):
-        layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
-        lbl = Label(text=text, size_hint_y=None, text_size=(dp(250), None), 
-                    halign='right' if is_user else 'left', valign='top',
-                    color=(0, 0, 0.7, 1) if is_user else (0, 0, 0, 1), markup=True)
-        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
-        
-        if is_user:
-            layout.add_widget(Label(size_hint_x=0.2))
-            layout.add_widget(lbl)
-        else:
-            layout.add_widget(lbl)
-            layout.add_widget(Label(size_hint_x=0.2))
-            
-        layout.height = lbl.height + dp(10)
-        container.add_widget(layout)
-        layout.opacity = 0
-        Animation(opacity=1, d=0.2).start(layout)
-        Clock.schedule_once(lambda dt: setattr(container, 'height', container.minimum_height), 0.1)
-
-def save_note(text):
-    try:
-        note_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        data = {"id": note_id, "title": text[:20], "text": text}
-        with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: 
-            json.dump(data, f, ensure_ascii=False)
-    except Exception as e: print(e)
-
-class NotesApp(App):
-    def build(self):
-        Builder.load_string(KV)
-        sm = ScreenManager()
-        sm.add_widget(MainScreen(name='main'))
-        return sm
-
-if __name__ == "__main__":
-    NotesApp().run()
+        if not t
