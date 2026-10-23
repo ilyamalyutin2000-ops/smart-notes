@@ -6,8 +6,10 @@ source.dir = .
 source.include_exts = py,png,jpg,kv,atlas,json
 version = 0.1
 
-# Только проверенные библиотеки, без kivymd
 requirements = python3,kivy
+
+# ВОТ ЭТА СТРОКА ПЕРЕДАСТ КЛЮЧ ВНУТРЬ APK
+android.env_vars = OPENROUTER_KEY=$OPENROUTER_KEY
 
 orientation = portrait
 fullscreen = 0
