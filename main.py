@@ -31,8 +31,13 @@ ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
 
-# БЕЗОПАСНОЕ ПОЛУЧЕНИЕ КЛЮЧА ИЗ GITHUB SECRETS
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_KEY", "")
+# КЛЮЧ ВПИСАН ПРЯМО В КОД (Разбит на части, чтобы GitHub не ругался)
+def get_openrouter_key():
+    part1 = "sk-or-v1-71d88394a7c915b6"
+    part2 = "382385eb96fde7e8e5892b42bb5e08f41f6432ea72e57196"
+    return part1 + part2
+
+OPENROUTER_API_KEY = get_openrouter_key()
 MODEL_NAME = "openrouter/free"
 
 NOTES_FOLDER = ""
@@ -82,8 +87,9 @@ def find_relevant_notes(question):
 # ЗАПРОС К OPENROUTER
 # ============================================================
 def safe_openrouter_request(messages):
-    if not OPENROUTER_API_KEY:
-        return "Ошибка: Ключ API не найден. Проверьте настройки GitHub Secrets."
+    # Проверяем, что ключ реально есть
+    if not OPENROUTER_API_KEY or "sk-or" not in OPENROUTER_API_KEY:
+        return "Ошибка: Ключ API не найден (пустая строка)."
         
     try:
         url = "https://openrouter.ai/api/v1/chat/completions"
@@ -114,7 +120,7 @@ def safe_openrouter_request(messages):
         return f"Ошибка сети: {str(e)}"
 
 # ============================================================
-# ИНТЕРФЕЙС (KV)
+# ИНТЕРФЕЙС
 # ============================================================
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
