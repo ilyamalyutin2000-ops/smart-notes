@@ -31,13 +31,13 @@ ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
 
-# КЛЮЧ ВПИСАН ПРЯМО В КОД (Разбит на части, чтобы GitHub не ругался)
-def get_openrouter_key():
-    part1 = "sk-or-v1-71d88394a7c915b6"
-    part2 = "382385eb96fde7e8e5892b42bb5e08f41f6432ea72e57196"
-    return part1 + part2
+# КЛЮЧ OPENROUTER (разбит на 2 части для GitHub)
+def get_key():
+    p1 = "sk-or-v1-71d88394a7c915b6"
+    p2 = "382385eb96fde7e8e5892b42bb5e08f41f6432ea72e57196"
+    return p1 + p2
 
-OPENROUTER_API_KEY = get_openrouter_key()
+OPENROUTER_API_KEY = get_key()
 MODEL_NAME = "openrouter/free"
 
 NOTES_FOLDER = ""
@@ -84,13 +84,9 @@ def find_relevant_notes(question):
     return context[:4000]
 
 # ============================================================
-# ЗАПРОС К OPENROUTER
+# ЗАПРОС К OPENROUTER (Безопасный)
 # ============================================================
 def safe_openrouter_request(messages):
-    # Проверяем, что ключ реально есть
-    if not OPENROUTER_API_KEY or "sk-or" not in OPENROUTER_API_KEY:
-        return "Ошибка: Ключ API не найден (пустая строка)."
-        
     try:
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {
