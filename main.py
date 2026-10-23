@@ -17,7 +17,7 @@ from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
-from kivy.core.window import Window
+from kivy.core.window import Window # <-- ДОБАВЛЕНО ДЛЯ КЛАВИАТУРЫ
 from kivy.animation import Animation
 
 # ============================================================
@@ -25,13 +25,15 @@ from kivy.animation import Animation
 # ============================================================
 Window.clearcolor = get_color_from_hex('#F4F6F9')
 
+# ФИКС КЛАВИАТУРЫ: окно сдвигается вверх, чтобы поле ввода было видно
+Window.softinput_mode = 'below_target' 
+
 ssl_context = ssl.create_default_context()
 ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
 
-# КЛЮЧ OPENROUTER (разбит на 2 части для GitHub)
 def get_key():
     p1 = "sk-or-v1-71d88394a7c915b6"
     p2 = "382385eb96fde7e8e5892b42bb5e08f41f6432ea72e57196"
@@ -84,7 +86,7 @@ def find_relevant_notes(question):
     return context[:4000]
 
 # ============================================================
-# ЗАПРОС К OPENROUTER (Безопасный)
+# ЗАПРОС К OPENROUTER
 # ============================================================
 def safe_openrouter_request(messages):
     try:
@@ -156,6 +158,8 @@ KV = """
                             hint_text: 'Вопрос по конспектам...'
                             multiline: False
                             padding: dp(10), dp(10)
+                            # ВКЛЮЧАЕМ Т9 (автокоррекцию)
+                            input_type: 'text'
                             on_text_validate: root.send_chat_message()
                             
                         Button:
@@ -244,6 +248,8 @@ KV = """
                             id: learn_input
                             hint_text: 'Ваш ответ...'
                             multiline: False
+                            # ВКЛЮЧАЕМ Т9 (автокоррекцию)
+                            input_type: 'text'
                             on_text_validate: root.send_learn_message()
                             
                         Button:
@@ -290,6 +296,7 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.chat_history = []
+        self.waiting_for_continue = False # Флаг для дополнения ответа
         Clock.schedule_once(self.setup_app, 0.5)
 
     def setup_app(self, dt):
@@ -351,6 +358,30 @@ class MainScreen(Screen):
         text = self.ids.chat_input.text.strip()
         if not text: return
         self.ids.chat_input.text = ''
+        
+        # Проверка на "да" для дополнения
+        if self.waiting_for_continue and text.lower() in ['да', 'yes', 'конечно']:
+            self.waiting_for_continue = False
+            self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
+            self.chat_history.append({'role': 'user', 'content': "Да, дополни ответ."})
+            
+            loading = Label(text='Дополняю...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
+            self.ids.chat_container.add_widget(loading)
+            
+            def worker():
+                try:
+                    messages = self.chat_history
+                    answer = safe_openrouter_request(messages)
+                    if answer:
+                        self.chat_history.append({'role': 'assistant', 'content': answer})
+                    self.update_chat(answer=answer, loading=loading)
+                except Exception as e:
+                    self.update_chat(answer=f"Ошибка: {e}", loading=loading)
+            threading.Thread(target=worker, daemon=True).start()
+            return
+        
+        # Обычный запрос
+        self.waiting_for_continue = False
         self.add_simple_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
         
@@ -373,7 +404,11 @@ class MainScreen(Screen):
                 answer = safe_openrouter_request(messages)
                 
                 if answer:
+                    # ДОБАВЛЯЕМ ПРЕДЛОЖЕНИЕ ДОПОЛНИТЬ
+                    answer += "\n\nЕсли нужно дополнить ответ, напишите «да»."
                     self.chat_history.append({'role': 'assistant', 'content': answer})
+                    self.waiting_for_continue = True # Ждем "да"
+                    
                 self.update_chat(answer=answer, loading=loading)
             except Exception as e:
                 self.update_chat(answer=f"Ошибка: {e}", loading=loading)
