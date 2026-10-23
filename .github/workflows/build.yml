@@ -39,10 +39,7 @@ jobs:
           rm -rf ~/.buildozer
           rm -rf bin
 
-      # ВОТ ЗДЕСЬ МЫ ПЕРЕДАЕМ СЕКРЕТ В СРЕДУ
       - name: Build with Buildozer
-        env:
-          OPENROUTER_KEY: ${{ secrets.OPENROUTER_KEY }}
         run: |
           export APP_ANDROID_ACCEPT_SDK_LICENSE=1
           export BUILDOZER_WARN_ON_ROOT=0
