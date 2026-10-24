@@ -63,15 +63,48 @@ def init_storage():
         CACHE_FILE = "chat_cache.json"
 
 def copy_github_files():
-    # Если в папке проекта есть папки default_notes или default_courses, копируем их
     try:
         if os.path.exists("default_notes"):
             for f in os.listdir("default_notes"):
-                shutil.copy(os.path.join("default_notes", f), NOTES_FOLDER)
+                if f.endswith('.json'):
+                    shutil.copy(os.path.join("default_notes", f), NOTES_FOLDER)
         if os.path.exists("default_courses"):
             for f in os.listdir("default_courses"):
-                shutil.copy(os.path.join("default_courses", f), COURSES_FOLDER)
+                if f.endswith('.json'):
+                    shutil.copy(os.path.join("default_courses", f), COURSES_FOLDER)
     except: pass
+
+# ============================================================
+# ПРОВЕРКА ИНТЕРНЕТА И ЛОКАЛЬНЫЙ ПОИСК
+# ============================================================
+def check_internet():
+    try:
+        urllib.request.urlopen("https://8.8.8.8", timeout=3, context=ssl_context)
+        return True
+    except: return False
+
+def local_search(question):
+    notes = get_all_notes()
+    if not notes: return "У вас пока нет сохраненных конспектов."
+    words = [w.lower().strip('.,!?;:()[]{}"') for w in question.split() if len(w) > 3]
+    if not words: return "Вопрос слишком короткий."
+    best_notes = []
+    for note in notes:
+        text_lower = note.get('text', '').lower()
+        score = sum(text_lower.count(w) for w in words)
+        if score > 0:
+            best_notes.append((score, note.get('text', '')))
+    if not best_notes:
+        return "В ваших конспектах нет информации по этому вопросу (нет интернета для запроса к ИИ)."
+    best_notes.sort(key=lambda x: -x[0])
+    top_text = best_notes[0][1]
+    first_word = words[0]
+    idx = top_text.lower().find(first_word)
+    if idx == -1: idx = 0
+    start = max(0, idx - 150)
+    end = min(len(top_text), idx + 350)
+    snippet = top_text[start:end].strip()
+    return f"[Офлайн-режим] Нашел в конспекте:\n\n...{snippet}...\n\n(Подключите интернет для полного ответа от ИИ)"
 
 # ============================================================
 # РАБОТА С ФАЙЛАМИ
@@ -346,7 +379,7 @@ class MainScreen(Screen):
         self.chat_history = []
         self.learn_history = []
         self.learning_context = ""
-        self.course_cache = {} # Кэш уроков (в оперативной памяти)
+        self.course_cache = {}
         Clock.schedule_once(self.setup_app, 0.5)
 
     def setup_app(self, dt):
@@ -413,7 +446,7 @@ class MainScreen(Screen):
                     self.update_chat(f"📁 [Из памяти]\n\n{cached}", loading)
                     return
                 if not check_internet():
-                    self.update_chat("Нет интернета. Подключите сеть или найдите ответ в конспектах (вкладка Загрузка).", loading)
+                    self.update_chat("Нет интернета. Подключите сеть.", loading)
                     return
                 context = find_relevant_notes(text)
                 sys_p = "Отвечай на русском. Используй ТОЛЬКО текст из конспекта:\n" + context if context else "Нет конспектов."
@@ -443,7 +476,6 @@ class MainScreen(Screen):
         
         def worker():
             try:
-                # ЖЕСТКИЙ ПРОМПТ ДЛЯ ИЗБЕЖАНИЯ ТАБЛИЦ
                 prompt = (
                     "Ты ИИ-учитель. Разбей текст на 3-4 урока. "
                     "ВАЖНО: Пиши ТОЛЬКО названия уроков цифрами. Никаких таблиц и символов. "
@@ -473,7 +505,6 @@ class MainScreen(Screen):
         self.ids.learn_container.clear_widgets()
         self.add_bubble(self.ids.learn_container, "План готов. Выбери урок:", is_user=False)
         
-        # Сохраняем курс в файл
         try:
             course_id = datetime.now().strftime("%Y%m%d_%H%M%S")
             with open(os.path.join(COURSES_FOLDER, f"course_{course_id}.json"), 'w', encoding='utf-8') as f:
@@ -491,7 +522,6 @@ class MainScreen(Screen):
         self.ids.learn_container.clear_widgets()
         self.add_bubble(self.ids.learn_container, f"Урок: {lesson_title}", is_user=False)
         
-        # ПРОВЕРКА КЭША УРОКОВ (Чтобы не пропадал при переключении)
         if lesson_title in self.course_cache:
             self.add_bubble(self.ids.learn_container, self.course_cache[lesson_title], is_user=False)
             self.learn_history = [{'role': 'assistant', 'content': self.course_cache[lesson_title]}]
@@ -503,7 +533,6 @@ class MainScreen(Screen):
 
         def worker():
             try:
-                # ЖЕСТКИЙ ПРОМПТ ДЛЯ ИСКЛЮЧЕНИЯ ТАБЛИЦ И СИМВОЛОВ
                 prompt = (
                     f"Ты ИИ-учитель. Объясни тему '{lesson_title}' простым текстом. "
                     "ЗАПРЕЩЕНО использовать markdown-таблицы, звездочки, решетки и сложные математические символы (пиши словами: 'в степени', 'корень из'). "
@@ -512,7 +541,7 @@ class MainScreen(Screen):
                 )
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
                 if ans and not ans.startswith("Ошибка"):
-                    self.course_cache[lesson_title] = ans # Сохраняем в оперативку
+                    self.course_cache[lesson_title] = ans
                     self.learn_history = [{'role': 'assistant', 'content': ans}]
                 self.update_learn(ans, None)
             except Exception as e: self.update_learn(f"Ошибка: {e}", None)
@@ -549,17 +578,14 @@ class MainScreen(Screen):
     # --- ДИЗАЙН ПУЗЫРЕЙ ---
     def add_bubble(self, container, text, is_user):
         layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
-        
-        # Красивый фон (светло-синий для юзера, белый для бота)
         bg_color = (0.85, 0.92, 1, 1) if is_user else (1, 1, 1, 1)
         
         lbl = Label(
             text=text, size_hint_y=None, text_size=(dp(280), None), 
             halign='right' if is_user else 'left', valign='top',
-            color=(0, 0, 0, 1), markup=False # ОТКЛЮЧАЕМ MARKUP, ЧТОБЫ НЕ БЫЛО КРАКОЗЯБР
+            color=(0, 0, 0, 1), markup=False
         )
         
-        # Красивый фон пузыря (без радиусов, чтобы не вылетало, просто цветная плашка)
         with lbl.canvas.before:
             from kivy.graphics import Color, Rectangle
             Color(*bg_color)
@@ -567,11 +593,10 @@ class MainScreen(Screen):
         lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
         lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
         
-        # Отступы внутри пузыря
         lbl.padding = (dp(10), dp(10))
         
         def update_height(instance, texture_size):
-            instance.height = texture_size[1] + dp(20) # +20 на отступы
+            instance.height = texture_size[1] + dp(20)
             layout.height = instance.height
             container.height = container.minimum_height
         lbl.bind(texture_size=update_height)
