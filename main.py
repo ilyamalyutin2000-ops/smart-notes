@@ -94,10 +94,6 @@ class ColorButton(Button):
         self.rect.pos = self.pos
         self.rect.size = self.size
 
-    def set_color(self, color):
-        self.bg_color = color
-        self.color_inst.rgba = color
-
 # ============================================================
 # ИНТЕРФЕЙС
 # ============================================================
@@ -245,15 +241,15 @@ KV = """
                         ColorButton:
                             text: "Синий"
                             bg_color: (0.15, 0.45, 0.85, 1)
-                            on_release: root.set_theme_btn((0.15, 0.45, 0.85, 1))
+                            on_release: root.change_theme("btn", (0.15, 0.45, 0.85, 1))
                         ColorButton:
                             text: "Зеленый"
                             bg_color: (0.2, 0.6, 0.4, 1)
-                            on_release: root.set_theme_btn((0.2, 0.6, 0.4, 1))
+                            on_release: root.change_theme("btn", (0.2, 0.6, 0.4, 1))
                         ColorButton:
                             text: "Красный"
                             bg_color: (0.7, 0.2, 0.2, 1)
-                            on_release: root.set_theme_btn((0.7, 0.2, 0.2, 1))
+                            on_release: root.change_theme("btn", (0.7, 0.2, 0.2, 1))
 
                     Label:
                         text: "Фон приложения:"
@@ -265,12 +261,12 @@ KV = """
                         ColorButton:
                             text: "Темный"
                             bg_color: (0.2, 0.2, 0.2, 1)
-                            on_release: root.set_theme_bg((0.07, 0.07, 0.07, 1))
+                            on_release: root.change_theme("bg", (0.07, 0.07, 0.07, 1))
                         ColorButton:
                             text: "Светлый"
                             bg_color: (0.9, 0.9, 0.9, 1)
                             color: (0,0,0,1)
-                            on_release: root.set_theme_bg((0.95, 0.95, 0.95, 1))
+                            on_release: root.change_theme("bg", (0.95, 0.95, 0.95, 1))
 
         # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
@@ -310,41 +306,33 @@ class MainScreen(Screen):
 
     def switch(self, name):
         self.ids.content_manager.current = name
-        # Подсветка кнопок
         active = THEME["btn"]
         inactive = (0.2, 0.2, 0.2, 1)
-        self.ids.nav_chat.set_color(active if name == 'chat' else inactive)
-        self.ids.nav_new.set_color(active if name == 'new' else inactive)
-        self.ids.nav_learn.set_color(active if name == 'learn' else inactive)
+        self.ids.nav_chat.color_inst.rgba = active if name == 'chat' else inactive
+        self.ids.nav_new.color_inst.rgba = active if name == 'new' else inactive
+        self.ids.nav_learn.color_inst.rgba = active if name == 'learn' else inactive
 
     def update_parts_label(self, val):
         self.ids.parts_label.text = "Авто" if val == 0 else str(int(val))
 
-    # --- НАСТРОЙКИ ---
-    def set_theme_btn(self, color):
-        THEME["btn"] = color
-        # Перекрашиваем все кнопки
-        for w in self.walk():
-            if isinstance(w, ColorButton) and w.id not in ['nav_chat', 'nav_new', 'nav_learn']:
-                w.set_color(color)
-        self.switch(self.ids.content_manager.current)
-
-    def set_theme_bg(self, color):
-        THEME["bg"] = color
-        Window.clearcolor = color
-        # Меняем цвет текста в зависимости от фона
-        if color[0] > 0.5:
-            THEME["text"] = (0, 0, 0, 1)
-            THEME["chat_bot"] = (0.85, 0.85, 0.85, 1)
-        else:
-            THEME["text"] = (1, 1, 1, 1)
-            THEME["chat_bot"] = (0.15, 0.15, 0.15, 1)
+    # --- БЕЗОПАСНАЯ СМЕНА ТЕМЫ (БЕЗ ВЫЛЕТОВ) ---
+    def change_theme(self, key, color):
+        THEME[key] = color
         
-        # Обновляем текст на экранах (просто перезагружаем текущий экран)
-        self.ids.status_label.color = THEME["text"]
-        for lbl in self.ids.chat_container.children:
-            if isinstance(lbl, Label):
-                lbl.color = THEME["text"]
+        # Если меняем фон, автоматически меняем цвет текста
+        if key == "bg":
+            Window.clearcolor = color
+            if color[0] > 0.5: # Если фон светлый
+                THEME["text"] = (0, 0, 0, 1)
+                THEME["chat_bot"] = (0.85, 0.85, 0.85, 1)
+            else: # Если фон темный
+                THEME["text"] = (1, 1, 1, 1)
+                THEME["chat_bot"] = (0.15, 0.15, 0.15, 1)
+        
+        # Перезагружаем приложение, чтобы применить цвета (это безопасно)
+        App.get_running_app().root.clear_widgets()
+        App.get_running_app().root.add_widget(MainScreen(name='main'))
+        App.get_running_app().root.current = self.ids.content_manager.current
 
     # --- ЗАГРУЗКА ---
     def save_manual(self):
