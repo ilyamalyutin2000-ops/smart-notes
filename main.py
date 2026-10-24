@@ -20,6 +20,7 @@ from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle, RoundedRectangle
+from kivy.core.clipboard import Clipboard
 
 # ============================================================
 # НАСТРОЙКА
@@ -35,11 +36,7 @@ OCR_API_KEY = "K86772432188957"
 OPENROUTER_API_KEY = "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"
 MODEL_NAME = "openrouter/free"
 
-# БЕЗОПАСНАЯ ПАПКА (Только внутренняя память приложения)
-BASE_DIR = ""
-NOTES_FOLDER = ""
-COURSES_FOLDER = ""
-CACHE_FILE = ""
+BASE_DIR, NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = "", "", "", ""
 
 def init_storage():
     global BASE_DIR, NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE
@@ -50,33 +47,24 @@ def init_storage():
         os.makedirs(NOTES_FOLDER, exist_ok=True)
         os.makedirs(COURSES_FOLDER, exist_ok=True)
         CACHE_FILE = os.path.join(BASE_DIR, "cache.json")
-    except Exception as e:
-        print(f"Ошибка создания папок: {e}")
-        BASE_DIR = "."
-        NOTES_FOLDER = "."
-        COURSES_FOLDER = "."
-        CACHE_FILE = "cache.json"
+    except: 
+        BASE_DIR, NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = ".", ".", ".", "cache.json"
 
 # ============================================================
-# БЕЗОПАСНОЕ СОХРАНЕНИЕ
+# ФУНКЦИИ
 # ============================================================
-def save_note(text):
-    try:
-        # Генерируем имя файла ТОЛЬКО из времени (без текста), чтобы не было кракозябр в имени
-        note_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        title = text.strip().split('\n')[0][:30] if text.strip() else "Без названия"
-        
-        file_path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
-        with open(file_path, 'w', encoding='utf-8') as f: 
-            json.dump({"id": note_id, "title": title, "text": text}, f, ensure_ascii=False)
-        return True
-    except Exception as e: 
-        print(f"Ошибка сохранения: {e}")
-        return False
-
 def check_internet():
     try:
         urllib.request.urlopen("https://8.8.8.8", timeout=3, context=ssl_context)
+        return True
+    except: return False
+
+def save_note(text):
+    try:
+        note_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        title = text.strip().split('\n')[0][:30] if text.strip() else "Без названия"
+        with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: 
+            json.dump({"id": note_id, "title": title, "text": text}, f, ensure_ascii=False)
         return True
     except: return False
 
@@ -87,7 +75,7 @@ def safe_openrouter_request(messages):
         
         sys_instruction = {
             "role": "system", 
-            "content": "Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Запрещено использовать английский. Не используй markdown-таблицы, звездочки и сложные символы."
+            "content": "Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Не используй markdown-таблицы и сложные символы."
         }
         final_messages = [sys_instruction] + messages
         payload = {"model": MODEL_NAME, "messages": final_messages, "temperature": 0.5, "max_tokens": 1500}
@@ -95,13 +83,11 @@ def safe_openrouter_request(messages):
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
         with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
             return json.loads(response.read().decode('utf-8'))["choices"][0]["message"]["content"].strip()
-    except urllib.error.HTTPError as e: 
-        return f"Ошибка API ({e.code})"
-    except Exception as e: 
-        return f"Ошибка: {str(e)}"
+    except urllib.error.HTTPError as e: return f"Ошибка API ({e.code})"
+    except Exception as e: return f"Ошибка: {str(e)}"
 
 # ============================================================
-# КРАСИВАЯ КНОПКА
+# КНОПКИ
 # ============================================================
 class ModernButton(Button):
     def __init__(self, **kwargs):
@@ -114,7 +100,6 @@ class ModernButton(Button):
             self.color_inst = Color(*self.bg_color)
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(15)])
         self.bind(pos=self.update_rect, size=self.update_rect)
-
     def update_rect(self, *args):
         self.rect.pos = self.pos
         self.rect.size = self.size
@@ -129,7 +114,6 @@ KV = """
 <MainScreen>:
     BoxLayout:
         orientation: 'vertical'
-        
         ScreenManager:
             id: content_manager
             transition: SlideTransition(direction='left', duration=0.2)
@@ -141,7 +125,6 @@ KV = """
                     orientation: 'vertical'
                     padding: dp(10)
                     spacing: dp(10)
-                    
                     ScrollView:
                         id: chat_scroll
                         BoxLayout:
@@ -150,19 +133,15 @@ KV = """
                             size_hint_y: None
                             height: self.minimum_height
                             spacing: dp(10)
-                            
                     BoxLayout:
                         size_hint_y: None
                         height: dp(55)
                         spacing: dp(8)
-                        
                         TextInput:
                             id: chat_input
                             hint_text: 'Вопрос...'
                             multiline: False
-                            input_type: 'text'
                             on_text_validate: root.send_chat_message()
-                            
                         ModernButton:
                             text: '▶'
                             size_hint_x: None
@@ -177,21 +156,19 @@ KV = """
                     orientation: 'vertical'
                     padding: dp(15)
                     spacing: dp(15)
-                    
                     Label:
                         id: photo_status
-                        text: 'Вставьте текст конспекта в поле ниже'
+                        text: 'Вставьте текст:'
                         size_hint_y: None
                         height: dp(30)
-                        
                     TextInput:
                         id: manual_text
-                        hint_text: 'Введите текст...'
+                        hint_text: 'Введите конспект...'
                         multiline: True
                         size_hint_y: 1
-                        
+                        # АВТОРАСШИРЕНИЕ ОТКЛЮЧЕНО (чтобы не ломало экран), но поле большое
                     ModernButton:
-                        text: 'Сохранить текст'
+                        text: 'Сохранить'
                         size_hint_y: None
                         height: dp(55)
                         bg_color: (0.2, 0.6, 0.4, 1)
@@ -204,23 +181,19 @@ KV = """
                     orientation: 'vertical'
                     padding: dp(15)
                     spacing: dp(15)
-                    
                     TextInput:
                         id: learn_text_input
                         hint_text: 'Вставьте конспект для обучения...'
                         multiline: True
                         size_hint_y: 0.3
-                        
                     BoxLayout:
                         size_hint_y: None
                         height: dp(55)
                         spacing: dp(10)
-                        
                         ModernButton:
-                            text: 'Составить план'
+                            text: 'План'
                             bg_color: (0.2, 0.6, 0.4, 1)
                             on_release: root.start_learning()
-                        
                     ScrollView:
                         id: lessons_scroll
                         BoxLayout:
@@ -229,7 +202,6 @@ KV = """
                             size_hint_y: None
                             height: self.minimum_height
                             spacing: dp(8)
-                            
                     ScrollView:
                         id: learn_scroll
                         BoxLayout:
@@ -238,18 +210,15 @@ KV = """
                             size_hint_y: None
                             height: self.minimum_height
                             spacing: dp(10)
-                            
                     BoxLayout:
                         size_hint_y: None
                         height: dp(55)
                         spacing: dp(8)
-                        
                         TextInput:
                             id: learn_input
                             hint_text: 'Ваш ответ...'
                             multiline: False
                             on_text_validate: root.send_learn_message()
-                            
                         ModernButton:
                             text: '▶'
                             size_hint_x: None
@@ -269,7 +238,6 @@ KV = """
                 Rectangle:
                     pos: self.pos
                     size: self.size
-            
             ModernButton:
                 id: btn_nav_chat
                 text: 'Чат'
@@ -311,19 +279,20 @@ class MainScreen(Screen):
     def save_manual_text(self):
         text = self.ids.manual_text.text.strip()
         if text:
-            success = save_note(text)
-            if success:
+            if save_note(text):
                 self.ids.manual_text.text = ''
                 self.ids.photo_status.text = 'Сохранено!'
             else:
                 self.ids.photo_status.text = 'Ошибка сохранения'
 
-    def send_chat_message(self):
-        text = self.ids.chat_input.text.strip()
+    def send_chat_message(self, repeat_text=None):
+        text = repeat_text if repeat_text else self.ids.chat_input.text.strip()
         if not text: return
         self.ids.chat_input.text = ''
+        
         self.add_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
+        
         loading = Label(text='...', size_hint_y=None, height=dp(30))
         self.ids.chat_container.add_widget(loading)
         
@@ -344,41 +313,29 @@ class MainScreen(Screen):
         if loading and loading.parent: self.ids.chat_container.remove_widget(loading)
         self.add_bubble(self.ids.chat_container, answer, is_user=False)
 
-    # --- ОБУЧЕНИЕ (Исправлено) ---
     def start_learning(self):
         text = self.ids.learn_text_input.text.strip()
-        if not text: 
-            self.add_bubble(self.ids.learn_container, "Вставьте текст для обучения!", is_user=False)
-            return
-            
+        if not text: return
         self.learning_context = text
         self.ids.learn_container.clear_widgets()
         self.ids.lessons_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, "Анализирую текст...", is_user=False)
+        self.add_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
         
         def worker():
             try:
-                prompt = f"Составь план обучения из 3 пунктов по этому тексту. Выведи ТОЛЬКО нумерованный список (1. Название, 2. Название). Текст:\n{text[:2000]}"
+                prompt = f"Составь план из 3 пунктов. ТОЛЬКО цифры. Текст:\n{text[:2000]}"
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
-                
-                # Если нейросеть вернула пустоту или ошибку - делаем простой план
-                if not ans or ans.startswith("Ошибка") or len(ans) < 5:
-                    ans = "1. Введение\n2. Основная часть\n3. Закрепление материала"
-                
+                if not ans or len(ans) < 5: ans = "1. Введение\n2. Основная часть\n3. Закрепление"
                 self.show_lessons(ans, text)
-            except Exception as e: 
-                self.update_learn(f"Ошибка генерации плана: {e}", None)
-                
+            except: pass
         threading.Thread(target=worker, daemon=True).start()
 
     @mainthread
     def show_lessons(self, raw_plan, context):
         self.ids.learn_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, "План готов. Выберите урок:", is_user=False)
-        
-        lines = [line.strip() for line in raw_plan.split('\n') if line.strip()]
-        for line in lines:
-            if line[0].isdigit() or line.startswith('-'):
+        self.add_bubble(self.ids.learn_container, "План готов:", is_user=False)
+        for line in [l.strip() for l in raw_plan.split('\n') if l.strip()]:
+            if line[0].isdigit():
                 btn = ModernButton(text=line, size_hint_y=None, height=dp(50), bg_color=(0.15, 0.45, 0.85, 1))
                 btn.bind(on_release=lambda b, l=line: self.start_lesson(l))
                 self.ids.lessons_container.add_widget(btn)
@@ -389,18 +346,14 @@ class MainScreen(Screen):
         if lesson_title in self.course_cache:
             self.add_bubble(self.ids.learn_container, self.course_cache[lesson_title], is_user=False)
             return
-        if not check_internet(): 
-            self.add_bubble(self.ids.learn_container, "Нет интернета для генерации урока.", is_user=False)
-            return
-            
+        if not check_internet(): return
         def worker():
             try:
-                prompt = f"Ты учитель. Объясни тему '{lesson_title}' простыми словами на основе этого текста. В конце задай вопрос.\nТекст:\n{self.learning_context[:2000]}"
+                prompt = f"Объясни '{lesson_title}'. Без таблиц. Текст:\n{self.learning_context[:2000]}"
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
-                if ans and not ans.startswith("Ошибка"): 
-                    self.course_cache[lesson_title] = ans
+                if ans: self.course_cache[lesson_title] = ans
                 self.update_learn(ans, None)
-            except Exception as e: self.update_learn(f"Ошибка: {e}", None)
+            except: pass
         threading.Thread(target=worker, daemon=True).start()
 
     def send_learn_message(self):
@@ -418,23 +371,63 @@ class MainScreen(Screen):
         if loading and loading.parent: self.ids.learn_container.remove_widget(loading)
         self.add_bubble(self.ids.learn_container, answer, is_user=False)
 
+    # === НОВЫЙ ДИЗАЙН ПУЗЫРЕЙ С ТЕКСТОМ И КНОПКАМИ ===
     def add_bubble(self, container, text, is_user):
-        layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
-        lbl = Label(text=text, size_hint_y=None, text_size=(dp(280), None), halign='right' if is_user else 'left', valign='top', markup=False)
-        with lbl.canvas.before:
+        # Главный контейнер строки
+        row = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
+        
+        # Сам пузырь (вертикальный, чтобы влезли кнопки)
+        bubble = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
+        
+        # Текст
+        lbl = Label(
+            text=text, size_hint_y=None, text_size=(dp(250), None), 
+            halign='right' if is_user else 'left', valign='top',
+            color=(0, 0, 0, 1), markup=False
+        )
+        
+        # Фон пузыря (просто цветная плашка)
+        with bubble.canvas.before:
             Color(*(0.85, 0.92, 1, 1) if is_user else (1, 1, 1, 1))
-            rect = Rectangle(pos=lbl.pos, size=lbl.size)
-        lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
-        lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
+            rect = Rectangle(pos=bubble.pos, size=bubble.size)
+        bubble.bind(pos=lambda *x: setattr(rect, 'pos', bubble.pos))
+        bubble.bind(size=lambda *x: setattr(rect, 'size', bubble.size))
+        
         lbl.padding = (dp(10), dp(10))
-        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1] + dp(20)))
+        
+        # Обновляем высоту пузыря под текст
+        def update_height(instance, texture_size):
+            instance.height = texture_size[1] + dp(20)
+            bubble.height = instance.height + dp(40) # +40 на кнопки
+            row.height = bubble.height
+            container.height = container.minimum_height
+            
+        lbl.bind(texture_size=update_height)
+        bubble.add_widget(lbl)
+        
+        # Кнопки (Копировать и Повторить)
+        btn_row = BoxLayout(size_hint_y=None, height=dp(30), spacing=dp(5))
+        
+        btn_copy = ModernButton(text="📋 Копировать", font_size='12sp', bg_color=(0.8, 0.85, 0.9, 1))
+        btn_copy.bind(on_release=lambda x: Clipboard.copy(text))
+        btn_row.add_widget(btn_copy)
+        
         if is_user:
-            layout.add_widget(Label(size_hint_x=0.1))
-            layout.add_widget(lbl)
+            btn_repeat = ModernButton(text="🔄 Повторить", font_size='12sp', bg_color=(0.6, 0.8, 1, 1))
+            btn_repeat.bind(on_release=lambda x: self.send_chat_message(repeat_text=text))
+            btn_row.add_widget(btn_repeat)
+            
+        bubble.add_widget(btn_row)
+        
+        # Выравнивание (слева или справа)
+        if is_user:
+            row.add_widget(Label(size_hint_x=0.05))
+            row.add_widget(bubble)
         else:
-            layout.add_widget(lbl)
-            layout.add_widget(Label(size_hint_x=0.1))
-        container.add_widget(layout)
+            row.add_widget(bubble)
+            row.add_widget(Label(size_hint_x=0.05))
+            
+        container.add_widget(row)
         Clock.schedule_once(lambda dt: setattr(container, 'height', container.minimum_height), 0.1)
 
 class NotesApp(App):
