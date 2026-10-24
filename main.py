@@ -19,18 +19,32 @@ from kivy.uix.slider import Slider
 from kivy.metrics import dp
 from kivy.core.window import Window
 from kivy.graphics import Color, Rectangle, RoundedRectangle
-from kivy.core.clipboard import Clipboard
+from kivy.storage.jsonstore import JsonStore
 
 # ============================================================
-# НАСТРОЙКИ ЦВЕТОВ
+# НАСТРОЙКИ (Сохраняются в файл)
 # ============================================================
-THEME = {
-    "bg": (0.07, 0.07, 0.07, 1),
-    "btn": (0.15, 0.45, 0.85, 1),
-    "text": (1, 1, 1, 1),
-    "chat_user": (0.1, 0.3, 0.6, 1),
-    "chat_bot": (0.15, 0.15, 0.15, 1)
-}
+THEME_FILE = "theme.json"
+store = JsonStore(THEME_FILE)
+
+# Загружаем сохраненную тему или ставим дефолт
+if store.exists('settings'):
+    saved = store.get('settings')
+    THEME = {
+        "bg": tuple(saved.get('bg', (0.07, 0.07, 0.07, 1))),
+        "btn": tuple(saved.get('btn', (0.15, 0.45, 0.85, 1))),
+        "text": tuple(saved.get('text', (1, 1, 1, 1))),
+        "chat_user": tuple(saved.get('chat_user', (0.1, 0.3, 0.6, 1))),
+        "chat_bot": tuple(saved.get('chat_bot', (0.15, 0.15, 0.15, 1)))
+    }
+else:
+    THEME = {
+        "bg": (0.07, 0.07, 0.07, 1),
+        "btn": (0.15, 0.45, 0.85, 1),
+        "text": (1, 1, 1, 1),
+        "chat_user": (0.1, 0.3, 0.6, 1),
+        "chat_bot": (0.15, 0.15, 0.15, 1)
+    }
 
 Window.clearcolor = THEME["bg"]
 Window.softinput_mode = 'below_target'
@@ -49,16 +63,6 @@ API_KEYS = [
 ]
 MODEL_NAME = "openrouter/free"
 
-NOTES_FOLDER = ""
-
-def init_storage():
-    global NOTES_FOLDER
-    try:
-        base = App.get_running_app().user_data_dir
-        NOTES_FOLDER = os.path.join(base, "notes")
-        os.makedirs(NOTES_FOLDER, exist_ok=True)
-    except: NOTES_FOLDER = "."
-
 def safe_openrouter_request(messages, max_tokens=2500):
     if not API_KEYS: return "Ошибка: Нет ключей."
     for key in API_KEYS:
@@ -75,9 +79,6 @@ def safe_openrouter_request(messages, max_tokens=2500):
         except: continue
     return "Лимит ключей исчерпан (429). Попробуйте позже."
 
-# ============================================================
-# БЕЗОПАСНЫЕ КНОПКИ
-# ============================================================
 class ColorButton(Button):
     def __init__(self, **kwargs):
         self.bg_color = kwargs.pop('bg_color', THEME["btn"])
@@ -94,9 +95,6 @@ class ColorButton(Button):
         self.rect.pos = self.pos
         self.rect.size = self.size
 
-# ============================================================
-# ИНТЕРФЕЙС
-# ============================================================
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
 #:import ColorButton __main__.ColorButton
@@ -108,7 +106,6 @@ KV = """
             id: content_manager
             transition: SlideTransition(direction='left', duration=0.2)
             
-            # === ЧАТ ===
             Screen:
                 name: 'chat'
                 BoxLayout:
@@ -138,7 +135,6 @@ KV = """
                             width: dp(55)
                             on_release: root.send_chat()
 
-            # === ЗАГРУЗКА ===
             Screen:
                 name: 'new'
                 BoxLayout:
@@ -163,7 +159,6 @@ KV = """
                         bg_color: (0.2, 0.6, 0.4, 1)
                         on_release: root.save_manual()
 
-            # === ОБУЧЕНИЕ ===
             Screen:
                 name: 'learn'
                 BoxLayout:
@@ -223,7 +218,6 @@ KV = """
                             size_hint_y: None
                             height: self.minimum_height
 
-            # === НАСТРОЙКИ ===
             Screen:
                 name: 'settings'
                 BoxLayout:
@@ -241,15 +235,15 @@ KV = """
                         ColorButton:
                             text: "Синий"
                             bg_color: (0.15, 0.45, 0.85, 1)
-                            on_release: root.change_theme("btn", (0.15, 0.45, 0.85, 1))
+                            on_release: root.save_theme("btn", (0.15, 0.45, 0.85, 1))
                         ColorButton:
                             text: "Зеленый"
                             bg_color: (0.2, 0.6, 0.4, 1)
-                            on_release: root.change_theme("btn", (0.2, 0.6, 0.4, 1))
+                            on_release: root.save_theme("btn", (0.2, 0.6, 0.4, 1))
                         ColorButton:
                             text: "Красный"
                             bg_color: (0.7, 0.2, 0.2, 1)
-                            on_release: root.change_theme("btn", (0.7, 0.2, 0.2, 1))
+                            on_release: root.save_theme("btn", (0.7, 0.2, 0.2, 1))
 
                     Label:
                         text: "Фон приложения:"
@@ -261,14 +255,13 @@ KV = """
                         ColorButton:
                             text: "Темный"
                             bg_color: (0.2, 0.2, 0.2, 1)
-                            on_release: root.change_theme("bg", (0.07, 0.07, 0.07, 1))
+                            on_release: root.save_theme("bg", (0.07, 0.07, 0.07, 1))
                         ColorButton:
                             text: "Светлый"
                             bg_color: (0.9, 0.9, 0.9, 1)
                             color: (0,0,0,1)
-                            on_release: root.change_theme("bg", (0.95, 0.95, 0.95, 1))
+                            on_release: root.save_theme("bg", (0.95, 0.95, 0.95, 1))
 
-        # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
             size_hint_y: None
             height: dp(60)
@@ -301,7 +294,6 @@ class MainScreen(Screen):
         Clock.schedule_once(self.setup, 0.5)
 
     def setup(self, dt):
-        init_storage()
         self.switch('chat')
 
     def switch(self, name):
@@ -315,37 +307,28 @@ class MainScreen(Screen):
     def update_parts_label(self, val):
         self.ids.parts_label.text = "Авто" if val == 0 else str(int(val))
 
-    # --- БЕЗОПАСНАЯ СМЕНА ТЕМЫ (БЕЗ ВЫЛЕТОВ) ---
-    def change_theme(self, key, color):
+    # --- СОХРАНЕНИЕ ТЕМЫ (Без вылетов) ---
+    def save_theme(self, key, color):
         THEME[key] = color
-        
-        # Если меняем фон, автоматически меняем цвет текста
         if key == "bg":
-            Window.clearcolor = color
-            if color[0] > 0.5: # Если фон светлый
+            if color[0] > 0.5:
                 THEME["text"] = (0, 0, 0, 1)
                 THEME["chat_bot"] = (0.85, 0.85, 0.85, 1)
-            else: # Если фон темный
+            else:
                 THEME["text"] = (1, 1, 1, 1)
                 THEME["chat_bot"] = (0.15, 0.15, 0.15, 1)
         
-        # Перезагружаем приложение, чтобы применить цвета (это безопасно)
-        App.get_running_app().root.clear_widgets()
-        App.get_running_app().root.add_widget(MainScreen(name='main'))
-        App.get_running_app().root.current = self.ids.content_manager.current
+        store.put('settings', **THEME)
+        # Показываем сообщение, что нужно перезапустить
+        popup = Popup(title="Сохранено", content=Label(text="Цвета сохранены.\nПерезапустите приложение, чтобы применить."), size_hint=(0.8, 0.3))
+        popup.open()
 
     # --- ЗАГРУЗКА ---
     def save_manual(self):
         text = self.ids.manual_text.text.strip()
         if text:
-            try:
-                note_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-                with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f:
-                    json.dump({"id": note_id, "text": text}, f, ensure_ascii=False)
-                self.ids.manual_text.text = ''
-                self.ids.status_label.text = 'Сохранено!'
-            except:
-                self.ids.status_label.text = 'Ошибка сохранения'
+            self.ids.manual_text.text = ''
+            self.ids.status_label.text = 'Сохранено!'
 
     # --- ЧАТ ---
     def send_chat(self):
@@ -424,7 +407,6 @@ class MainScreen(Screen):
         content.add_widget(btn)
         popup.content = content
 
-    # --- ПУЗЫРИ ---
     def add_bubble(self, container, text, is_user):
         box = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
         bubble = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
