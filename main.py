@@ -397,7 +397,7 @@ class MainScreen(Screen):
         if loading and loading.parent: self.ids.chat_container.remove_widget(loading)
         self.add_bubble(self.ids.chat_container, answer, is_user=False)
 
-    # --- ОБУЧЕНИЕ (ДО 50 ЧАСТЕЙ) ---
+    # --- ОБУЧЕНИЕ ---
     def start_learning(self):
         text = self.ids.learn_text_input.text.strip()
         if not text: return
@@ -411,7 +411,6 @@ class MainScreen(Screen):
         if parts == 0:
             parts_prompt = "Разбей текст на логические части (оптимально от 3 до 7 частей, в зависимости от объема)."
         elif parts > 15:
-            # Если частей много, просим краткие названия
             parts_prompt = f"Разбей текст РОВНО на {parts} частей. Названия частей делай ОЧЕНЬ КОРОТКИМИ (1-3 слова)."
         else:
             parts_prompt = f"Разбей текст РОВНО на {parts} частей."
@@ -471,9 +470,12 @@ class MainScreen(Screen):
         content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
         
         scroll = ScrollView()
-        scroll.canvas.before:
+        
+        # ПРАВИЛЬНЫЙ СИНТАКСИС PYTHON ДЛЯ РИСОВАНИЯ (С WITH)
+        with scroll.canvas.before:
             Color(0.1, 0.1, 0.1, 1)
             rect = Rectangle(pos=scroll.pos, size=scroll.size)
+            
         scroll.bind(pos=lambda *x: setattr(rect, 'pos', scroll.pos))
         scroll.bind(size=lambda *x: setattr(rect, 'size', scroll.size))
         
@@ -486,6 +488,7 @@ class MainScreen(Screen):
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
         
         def copy_smart(instance):
+            import re
             matches = re.findall(r'```(.*?)```', text, re.DOTALL)
             if matches:
                 code_only = "\n\n".join(matches)
