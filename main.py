@@ -19,7 +19,6 @@ from kivy.uix.textinput import TextInput
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
-from kivy.animation import Animation
 from kivy.graphics import Color, Rectangle, RoundedRectangle
 
 # ============================================================
@@ -36,100 +35,70 @@ OCR_API_KEY = "K86772432188957"
 OPENROUTER_API_KEY = "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"
 MODEL_NAME = "openrouter/free"
 
-NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = "", "", ""
+# БЕЗОПАСНАЯ ПАПКА (Только внутренняя память приложения)
+BASE_DIR = ""
+NOTES_FOLDER = ""
+COURSES_FOLDER = ""
+CACHE_FILE = ""
 
 def init_storage():
-    global NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE
+    global BASE_DIR, NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE
     try:
-        base = App.get_running_app().user_data_dir
-        NOTES_FOLDER = os.path.join(base, "notes")
-        COURSES_FOLDER = os.path.join(base, "courses")
+        BASE_DIR = App.get_running_app().user_data_dir
+        NOTES_FOLDER = os.path.join(BASE_DIR, "notes")
+        COURSES_FOLDER = os.path.join(BASE_DIR, "courses")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
         os.makedirs(COURSES_FOLDER, exist_ok=True)
-        CACHE_FILE = os.path.join(base, "cache.json")
-        
-        # Копируем файлы из GitHub при первом запуске
-        if os.path.exists("default_notes"):
-            for f in os.listdir("default_notes"):
-                if f.endswith('.json'): shutil.copy(os.path.join("default_notes", f), NOTES_FOLDER)
-        if os.path.exists("default_courses"):
-            for f in os.listdir("default_courses"):
-                if f.endswith('.json'): shutil.copy(os.path.join("default_courses", f), COURSES_FOLDER)
-    except: 
-        NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = ".", ".", "cache.json"
+        CACHE_FILE = os.path.join(BASE_DIR, "cache.json")
+    except Exception as e:
+        print(f"Ошибка создания папок: {e}")
+        BASE_DIR = "."
+        NOTES_FOLDER = "."
+        COURSES_FOLDER = "."
+        CACHE_FILE = "cache.json"
 
 # ============================================================
-# ФУНКЦИИ
+# БЕЗОПАСНОЕ СОХРАНЕНИЕ
 # ============================================================
+def save_note(text):
+    try:
+        # Генерируем имя файла ТОЛЬКО из времени (без текста), чтобы не было кракозябр в имени
+        note_id = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        title = text.strip().split('\n')[0][:30] if text.strip() else "Без названия"
+        
+        file_path = os.path.join(NOTES_FOLDER, f"{note_id}.json")
+        with open(file_path, 'w', encoding='utf-8') as f: 
+            json.dump({"id": note_id, "title": title, "text": text}, f, ensure_ascii=False)
+        return True
+    except Exception as e: 
+        print(f"Ошибка сохранения: {e}")
+        return False
+
 def check_internet():
     try:
         urllib.request.urlopen("https://8.8.8.8", timeout=3, context=ssl_context)
         return True
     except: return False
 
-def load_cache():
-    if not os.path.exists(CACHE_FILE): return {}
-    try:
-        with open(CACHE_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-    except: return {}
-
-def save_to_cache(q, a):
-    cache = load_cache()
-    cache[q.strip().lower()] = a
-    try:
-        with open(CACHE_FILE, 'w', encoding='utf-8') as f: json.dump(cache, f, ensure_ascii=False)
-    except: pass
-
-def get_all_notes():
-    notes = []
-    if not os.path.exists(NOTES_FOLDER): return notes
-    for fname in sorted(os.listdir(NOTES_FOLDER), reverse=True):
-        if fname.endswith('.json'):
-            try:
-                with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: notes.append(json.load(f))
-            except: pass
-    return notes
-
-def find_relevant_notes(q):
-    notes = get_all_notes()
-    if not notes: return ""
-    words = [w.lower().strip('.,!?;:()[]{}"') for w in q.split() if len(w) > 3]
-    if not words: return ""
-    scored = []
-    for note in notes:
-        score = sum(note.get('text', '').lower().count(w) for w in words)
-        if score > 0: scored.append((score, note))
-    scored.sort(key=lambda x: -x[0])
-    top = [n[1] for n in scored[:3]]
-    return "\n\n---\n\n".join([f"Конспект: {n.get('title', '')}\n{n.get('text', '')}" for n in top])[:4000] if top else ""
-
 def safe_openrouter_request(messages):
     try:
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
         
-        # ЖЕСТКОЕ ПРАВИЛО: Только русский язык
         sys_instruction = {
             "role": "system", 
-            "content": "Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Запрещено использовать английский язык, кроме названий функций или кода. Не используй markdown-таблицы, звездочки и сложные математические символы (пиши словами: 'в степени', 'корень из')."
+            "content": "Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Запрещено использовать английский. Не используй markdown-таблицы, звездочки и сложные символы."
         }
-        
         final_messages = [sys_instruction] + messages
         payload = {"model": MODEL_NAME, "messages": final_messages, "temperature": 0.5, "max_tokens": 1500}
         
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
         with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
             return json.loads(response.read().decode('utf-8'))["choices"][0]["message"]["content"].strip()
-            
-    except urllib.error.HTTPError as e: return f"Ошибка API ({e.code})"
-    except Exception as e: return f"Ошибка: {str(e)}"
-
-def save_note(text):
-    try:
-        note_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: 
-            json.dump({"id": note_id, "title": text[:20], "text": text}, f, ensure_ascii=False)
-    except: pass
+    except urllib.error.HTTPError as e: 
+        return f"Ошибка API ({e.code})"
+    except Exception as e: 
+        return f"Ошибка: {str(e)}"
 
 # ============================================================
 # КРАСИВАЯ КНОПКА
@@ -141,11 +110,9 @@ class ModernButton(Button):
         self.background_normal = ''
         self.background_down = ''
         self.background_color = (0, 0, 0, 0)
-        
         with self.canvas.before:
             self.color_inst = Color(*self.bg_color)
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(15)])
-            
         self.bind(pos=self.update_rect, size=self.update_rect)
 
     def update_rect(self, *args):
@@ -211,19 +178,11 @@ KV = """
                     padding: dp(15)
                     spacing: dp(15)
                     
-                    TextInput:
-                        id: photo_path
-                        hint_text: 'Путь к фото'
+                    Label:
+                        id: photo_status
+                        text: 'Вставьте текст конспекта в поле ниже'
                         size_hint_y: None
-                        height: dp(50)
-                        multiline: False
-                        
-                    ModernButton:
-                        text: 'Распознать фото'
-                        size_hint_y: None
-                        height: dp(55)
-                        bg_color: (0.55, 0.3, 0.8, 1)
-                        on_release: root.process_photo_by_path()
+                        height: dp(30)
                         
                     TextInput:
                         id: manual_text
@@ -261,11 +220,6 @@ KV = """
                             text: 'Составить план'
                             bg_color: (0.2, 0.6, 0.4, 1)
                             on_release: root.start_learning()
-                            
-                        ModernButton:
-                            text: 'Загрузить'
-                            bg_color: (0.8, 0.5, 0.2, 1)
-                            on_release: root.load_saved_course()
                         
                     ScrollView:
                         id: lessons_scroll
@@ -340,7 +294,6 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.chat_history = []
-        self.learn_history = []
         self.learning_context = ""
         self.course_cache = {}
         Clock.schedule_once(self.setup_app, 0.5)
@@ -355,35 +308,15 @@ class MainScreen(Screen):
         self.ids.btn_nav_new.color_inst.rgba = (0.15, 0.45, 0.85, 1) if name == 'new' else (0.4, 0.4, 0.45, 1)
         self.ids.btn_nav_learn.color_inst.rgba = (0.15, 0.45, 0.85, 1) if name == 'learn' else (0.4, 0.4, 0.45, 1)
 
-    def process_photo_by_path(self):
-        path = self.ids.photo_path.text.strip()
-        if not path: return
-        threading.Thread(target=self.process_photo, args=(path,), daemon=True).start()
-
-    def process_photo(self, path):
-        try:
-            if not os.path.exists(path): raise Exception("Файл не найден.")
-            with open(path, "rb") as f: encoded = base64.b64encode(f.read()).decode('utf-8')
-            url = "https://api.ocr.space/parse/image"
-            payload = f"apikey={OCR_API_KEY}&language=rus&base64Image=data:image/jpeg;base64,{encoded}"
-            headers = {"Content-Type": "application/x-www-form-urlencoded"}
-            req = urllib.request.Request(url, data=payload.encode('utf-8'), headers=headers, method='POST')
-            with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
-                result = json.loads(response.read().decode('utf-8'))
-            text = result.get('ParsedResults', [{}])[0].get('ParsedText', '')
-            self.update_photo_result(text)
-            save_note(text)
-        except Exception as e: self.update_photo_result(f'Ошибка: {e}')
-
-    @mainthread
-    def update_photo_result(self, text): self.ids.photo_status.text = 'Готово!'
-
     def save_manual_text(self):
         text = self.ids.manual_text.text.strip()
         if text:
-            save_note(text)
-            self.ids.manual_text.text = ''
-            self.ids.photo_status.text = 'Сохранено!'
+            success = save_note(text)
+            if success:
+                self.ids.manual_text.text = ''
+                self.ids.photo_status.text = 'Сохранено!'
+            else:
+                self.ids.photo_status.text = 'Ошибка сохранения'
 
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
@@ -396,14 +329,11 @@ class MainScreen(Screen):
         
         def worker():
             try:
-                cached = load_cache().get(text.strip().lower())
-                if cached: self.update_chat(f"📁 [Из памяти]\n\n{cached}", loading); return
-                if not check_internet(): self.update_chat("Нет интернета.", loading); return
-                context = find_relevant_notes(text)
-                sys_p = "Отвечай на русском. ТОЛЬКО конспект:\n" + context if context else "Нет конспектов."
-                ans = safe_openrouter_request([{"role": "system", "content": sys_p}] + self.chat_history)
+                if not check_internet():
+                    self.update_chat("Нет интернета.", loading)
+                    return
+                ans = safe_openrouter_request(self.chat_history)
                 if ans and not ans.startswith("Ошибка"):
-                    save_to_cache(text, ans)
                     self.chat_history.append({'role': 'assistant', 'content': ans})
                 self.update_chat(ans, loading)
             except Exception as e: self.update_chat(f"Ошибка: {e}", loading)
@@ -414,44 +344,41 @@ class MainScreen(Screen):
         if loading and loading.parent: self.ids.chat_container.remove_widget(loading)
         self.add_bubble(self.ids.chat_container, answer, is_user=False)
 
+    # --- ОБУЧЕНИЕ (Исправлено) ---
     def start_learning(self):
         text = self.ids.learn_text_input.text.strip()
-        if not text: return
+        if not text: 
+            self.add_bubble(self.ids.learn_container, "Вставьте текст для обучения!", is_user=False)
+            return
+            
         self.learning_context = text
         self.ids.learn_container.clear_widgets()
         self.ids.lessons_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
+        self.add_bubble(self.ids.learn_container, "Анализирую текст...", is_user=False)
         
         def worker():
             try:
-                prompt = "Разбей на 3-4 урока. ТОЛЬКО названия цифрами. Текст:\n" + self.learning_context[:2500]
+                prompt = f"Составь план обучения из 3 пунктов по этому тексту. Выведи ТОЛЬКО нумерованный список (1. Название, 2. Название). Текст:\n{text[:2000]}"
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
-                self.show_lessons(ans, self.learning_context)
-            except Exception as e: self.update_learn(f"Ошибка: {e}", None)
+                
+                # Если нейросеть вернула пустоту или ошибку - делаем простой план
+                if not ans or ans.startswith("Ошибка") or len(ans) < 5:
+                    ans = "1. Введение\n2. Основная часть\n3. Закрепление материала"
+                
+                self.show_lessons(ans, text)
+            except Exception as e: 
+                self.update_learn(f"Ошибка генерации плана: {e}", None)
+                
         threading.Thread(target=worker, daemon=True).start()
-
-    def load_saved_course(self):
-        try:
-            files = [f for f in os.listdir(COURSES_FOLDER) if f.endswith('.json')]
-            if not files: raise Exception("Нет курсов")
-            with open(os.path.join(COURSES_FOLDER, files[0]), 'r', encoding='utf-8') as f: data = json.load(f)
-            self.learning_context = data['context']
-            self.ids.learn_container.clear_widgets()
-            self.ids.lessons_container.clear_widgets()
-            self.add_bubble(self.ids.learn_container, "Загружен курс.", is_user=False)
-            self.show_lessons(data['plan'], data['context'])
-        except Exception as e: self.add_bubble(self.ids.learn_container, f"Ошибка: {e}", is_user=False)
 
     @mainthread
     def show_lessons(self, raw_plan, context):
         self.ids.learn_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, "План готов:", is_user=False)
-        try:
-            with open(os.path.join(COURSES_FOLDER, f"course_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"), 'w', encoding='utf-8') as f:
-                json.dump({"plan": raw_plan, "context": context}, f, ensure_ascii=False)
-        except: pass
-        for line in [l.strip() for l in raw_plan.split('\n') if l.strip()]:
-            if line[0].isdigit():
+        self.add_bubble(self.ids.learn_container, "План готов. Выберите урок:", is_user=False)
+        
+        lines = [line.strip() for line in raw_plan.split('\n') if line.strip()]
+        for line in lines:
+            if line[0].isdigit() or line.startswith('-'):
                 btn = ModernButton(text=line, size_hint_y=None, height=dp(50), bg_color=(0.15, 0.45, 0.85, 1))
                 btn.bind(on_release=lambda b, l=line: self.start_lesson(l))
                 self.ids.lessons_container.add_widget(btn)
@@ -462,12 +389,16 @@ class MainScreen(Screen):
         if lesson_title in self.course_cache:
             self.add_bubble(self.ids.learn_container, self.course_cache[lesson_title], is_user=False)
             return
-        if not check_internet(): return
+        if not check_internet(): 
+            self.add_bubble(self.ids.learn_container, "Нет интернета для генерации урока.", is_user=False)
+            return
+            
         def worker():
             try:
-                prompt = f"Объясни '{lesson_title}'. Без таблиц. Текст:\n{self.learning_context[:2500]}"
+                prompt = f"Ты учитель. Объясни тему '{lesson_title}' простыми словами на основе этого текста. В конце задай вопрос.\nТекст:\n{self.learning_context[:2000]}"
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
-                if ans and not ans.startswith("Ошибка"): self.course_cache[lesson_title] = ans
+                if ans and not ans.startswith("Ошибка"): 
+                    self.course_cache[lesson_title] = ans
                 self.update_learn(ans, None)
             except Exception as e: self.update_learn(f"Ошибка: {e}", None)
         threading.Thread(target=worker, daemon=True).start()
