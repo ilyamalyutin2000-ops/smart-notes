@@ -4,7 +4,6 @@ import json
 import threading
 import urllib.request
 import ssl
-import re
 from datetime import datetime
 from kivy.app import App
 from kivy.clock import Clock, mainthread
@@ -23,17 +22,17 @@ from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.core.clipboard import Clipboard
 
 # ============================================================
-# ГЛОБАЛЬНЫЕ НАСТРОЙКИ ЦВЕТОВ
+# НАСТРОЙКИ ЦВЕТОВ
 # ============================================================
-COLORS = {
-    "bg_app": (0.07, 0.07, 0.07, 1),      # Фон приложения
-    "btn": (0.15, 0.45, 0.85, 1),         # Цвет кнопок
-    "text": (1, 1, 1, 1),                 # Цвет текста
-    "chat_user": (0.1, 0.3, 0.6, 1),      # Твой пузырь
-    "chat_bot": (0.15, 0.15, 0.15, 1),    # Пузырь бота
+THEME = {
+    "bg": (0.07, 0.07, 0.07, 1),
+    "btn": (0.15, 0.45, 0.85, 1),
+    "text": (1, 1, 1, 1),
+    "chat_user": (0.1, 0.3, 0.6, 1),
+    "chat_bot": (0.15, 0.15, 0.15, 1)
 }
 
-Window.clearcolor = COLORS["bg_app"]
+Window.clearcolor = THEME["bg"]
 Window.softinput_mode = 'below_target'
 
 ssl_context = ssl.create_default_context()
@@ -50,30 +49,23 @@ API_KEYS = [
 ]
 MODEL_NAME = "openrouter/free"
 
-BASE_DIR, NOTES_FOLDER = "", ""
+NOTES_FOLDER = ""
 
 def init_storage():
-    global BASE_DIR, NOTES_FOLDER
+    global NOTES_FOLDER
     try:
-        BASE_DIR = App.get_running_app().user_data_dir
-        NOTES_FOLDER = os.path.join(BASE_DIR, "notes")
+        base = App.get_running_app().user_data_dir
+        NOTES_FOLDER = os.path.join(base, "notes")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
-    except: 
-        BASE_DIR, NOTES_FOLDER = ".", "."
+    except: NOTES_FOLDER = "."
 
-# ============================================================
-# ЗАПРОСЫ
-# ============================================================
 def safe_openrouter_request(messages, max_tokens=2500):
     if not API_KEYS: return "Ошибка: Нет ключей."
     for key in API_KEYS:
         try:
             url = "https://openrouter.ai/api/v1/chat/completions"
             headers = {"Content-Type": "application/json", "Authorization": f"Bearer {key}"}
-            sys_instruction = {
-                "role": "system", 
-                "content": "Отвечай на русском. Код оборачивай в ```. Не используй markdown-таблицы."
-            }
+            sys_instruction = {"role": "system", "content": "Отвечай на русском. Код оборачивай в ```. Без таблиц."}
             payload = {"model": MODEL_NAME, "messages": [sys_instruction] + messages, "max_tokens": max_tokens}
             req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
             with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
@@ -84,16 +76,15 @@ def safe_openrouter_request(messages, max_tokens=2500):
     return "Лимит ключей исчерпан (429). Попробуйте позже."
 
 # ============================================================
-# КНОПКА С ВОЗМОЖНОСТЬЮ СМЕНЫ ЦВЕТА
+# БЕЗОПАСНЫЕ КНОПКИ
 # ============================================================
 class ColorButton(Button):
     def __init__(self, **kwargs):
-        self.bg_color = kwargs.pop('bg_color', COLORS["btn"])
+        self.bg_color = kwargs.pop('bg_color', THEME["btn"])
         super().__init__(**kwargs)
         self.background_normal = ''
         self.background_down = ''
         self.background_color = (0, 0, 0, 0)
-        
         with self.canvas.before:
             self.color_inst = Color(*self.bg_color)
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(12)])
@@ -103,9 +94,9 @@ class ColorButton(Button):
         self.rect.pos = self.pos
         self.rect.size = self.size
 
-    def set_color(self, new_color):
-        self.bg_color = new_color
-        self.color_inst.rgba = new_color
+    def set_color(self, color):
+        self.bg_color = color
+        self.color_inst.rgba = color
 
 # ============================================================
 # ИНТЕРФЕЙС
@@ -121,6 +112,7 @@ KV = """
             id: content_manager
             transition: SlideTransition(direction='left', duration=0.2)
             
+            # === ЧАТ ===
             Screen:
                 name: 'chat'
                 BoxLayout:
@@ -150,6 +142,32 @@ KV = """
                             width: dp(55)
                             on_release: root.send_chat()
 
+            # === ЗАГРУЗКА ===
+            Screen:
+                name: 'new'
+                BoxLayout:
+                    orientation: 'vertical'
+                    padding: dp(15)
+                    spacing: dp(15)
+                    Label:
+                        id: status_label
+                        text: 'Вставьте текст:'
+                        color: 1, 1, 1, 1
+                    TextInput:
+                        id: manual_text
+                        hint_text: 'Введите конспект...'
+                        multiline: True
+                        size_hint_y: 1
+                        background_color: 0.15, 0.15, 0.15, 1
+                        foreground_color: 1, 1, 1, 1
+                    ColorButton:
+                        text: 'Сохранить'
+                        size_hint_y: None
+                        height: dp(55)
+                        bg_color: (0.2, 0.6, 0.4, 1)
+                        on_release: root.save_manual()
+
+            # === ОБУЧЕНИЕ ===
             Screen:
                 name: 'learn'
                 BoxLayout:
@@ -161,19 +179,23 @@ KV = """
                         size_hint_y: None
                         height: dp(40)
                         Label:
-                            text: "Кол-во частей:"
+                            text: "Частей:"
                             color: 1, 1, 1, 1
-                        TextInput:
-                            id: parts_input
-                            text: "0"
-                            input_filter: 'int'
-                            size_hint_x: 0.3
-                            background_color: 0.15, 0.15, 0.15, 1
-                            foreground_color: 1, 1, 1, 1
                         Label:
-                            text: "(0=Авто)"
-                            color: 0.5, 0.5, 0.5, 1
-
+                            id: parts_label
+                            text: "Авто"
+                            color: 1, 1, 1, 1
+                    
+                    Slider:
+                        id: parts_slider
+                        min: 0
+                        max: 50
+                        value: 0
+                        step: 1
+                        size_hint_y: None
+                        height: dp(30)
+                        on_value: root.update_parts_label(self.value)
+                        
                     TextInput:
                         id: learn_text
                         hint_text: 'Вставьте конспект...'
@@ -204,23 +226,8 @@ KV = """
                             orientation: 'vertical'
                             size_hint_y: None
                             height: self.minimum_height
-                            
-                    BoxLayout:
-                        size_hint_y: None
-                        height: dp(55)
-                        spacing: dp(8)
-                        TextInput:
-                            id: learn_input
-                            hint_text: 'Ответ...'
-                            background_color: 0.15, 0.15, 0.15, 1
-                            foreground_color: 1, 1, 1, 1
-                            on_text_validate: root.send_learn()
-                        ColorButton:
-                            text: '▶'
-                            size_hint_x: None
-                            width: dp(55)
-                            on_release: root.send_learn()
 
+            # === НАСТРОЙКИ ===
             Screen:
                 name: 'settings'
                 BoxLayout:
@@ -229,9 +236,8 @@ KV = """
                     spacing: dp(15)
                     
                     Label:
-                        text: "Цвета (нажми, чтобы применить):"
+                        text: "Цвет кнопок:"
                         color: 1, 1, 1, 1
-                        
                     BoxLayout:
                         size_hint_y: None
                         height: dp(50)
@@ -239,20 +245,19 @@ KV = """
                         ColorButton:
                             text: "Синий"
                             bg_color: (0.15, 0.45, 0.85, 1)
-                            on_release: root.apply_theme((0.15, 0.45, 0.85, 1), (0.07, 0.07, 0.07, 1))
+                            on_release: root.set_theme_btn((0.15, 0.45, 0.85, 1))
                         ColorButton:
                             text: "Зеленый"
                             bg_color: (0.2, 0.6, 0.4, 1)
-                            on_release: root.apply_theme((0.2, 0.6, 0.4, 1), (0.1, 0.1, 0.1, 1))
+                            on_release: root.set_theme_btn((0.2, 0.6, 0.4, 1))
                         ColorButton:
                             text: "Красный"
                             bg_color: (0.7, 0.2, 0.2, 1)
-                            on_release: root.apply_theme((0.7, 0.2, 0.2, 1), (0.05, 0.05, 0.05, 1))
+                            on_release: root.set_theme_btn((0.7, 0.2, 0.2, 1))
 
                     Label:
                         text: "Фон приложения:"
                         color: 1, 1, 1, 1
-                        
                     BoxLayout:
                         size_hint_y: None
                         height: dp(50)
@@ -260,32 +265,27 @@ KV = """
                         ColorButton:
                             text: "Темный"
                             bg_color: (0.2, 0.2, 0.2, 1)
-                            on_release: root.set_bg((0.07, 0.07, 0.07, 1))
-                        ColorButton:
-                            text: "Серый"
-                            bg_color: (0.4, 0.4, 0.4, 1)
-                            on_release: root.set_bg((0.2, 0.2, 0.2, 1))
+                            on_release: root.set_theme_bg((0.07, 0.07, 0.07, 1))
                         ColorButton:
                             text: "Светлый"
-                            bg_color: (0.8, 0.8, 0.8, 1)
+                            bg_color: (0.9, 0.9, 0.9, 1)
                             color: (0,0,0,1)
-                            on_release: root.set_bg((0.9, 0.9, 0.9, 1))
+                            on_release: root.set_theme_bg((0.95, 0.95, 0.95, 1))
 
+        # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
             size_hint_y: None
             height: dp(60)
             spacing: dp(8)
             padding: dp(5), dp(5)
-            canvas.before:
-                Color:
-                    rgba: 0.1, 0.1, 0.1, 1
-                Rectangle:
-                    pos: self.pos
-                    size: self.size
             ColorButton:
                 id: nav_chat
                 text: 'Чат'
                 on_release: root.switch('chat')
+            ColorButton:
+                id: nav_new
+                text: 'Загрузка'
+                on_release: root.switch('new')
             ColorButton:
                 id: nav_learn
                 text: 'Обучение'
@@ -302,49 +302,64 @@ class MainScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.chat_history = []
-        self.learn_context = ""
         Clock.schedule_once(self.setup, 0.5)
 
     def setup(self, dt):
         init_storage()
         self.switch('chat')
 
-    # Смена вкладки
     def switch(self, name):
         self.ids.content_manager.current = name
-        # Подсветка активной кнопки
-        self.ids.nav_chat.set_color(COLORS["btn"] if name == 'chat' else (0.2, 0.2, 0.2, 1))
-        self.ids.nav_learn.set_color(COLORS["btn"] if name == 'learn' else (0.2, 0.2, 0.2, 1))
+        # Подсветка кнопок
+        active = THEME["btn"]
+        inactive = (0.2, 0.2, 0.2, 1)
+        self.ids.nav_chat.set_color(active if name == 'chat' else inactive)
+        self.ids.nav_new.set_color(active if name == 'new' else inactive)
+        self.ids.nav_learn.set_color(active if name == 'learn' else inactive)
 
-    # === НАСТРОЙКИ ===
-    def apply_theme(self, btn_color, bg_color):
-        COLORS["btn"] = btn_color
-        COLORS["bg_app"] = bg_color
-        Window.clearcolor = bg_color
-        
-        # Перекрашиваем все кнопки на экране
-        for widget in self.walk():
-            if isinstance(widget, ColorButton):
-                # Не трогаем кнопки выбора цвета в настройках
-                if widget.parent and "settings" in str(widget.parent):
-                    continue
-                # Если это навигация
-                if widget.id == 'nav_chat':
-                    widget.set_color(btn_color if self.ids.content_manager.current == 'chat' else (0.2, 0.2, 0.2, 1))
-                elif widget.id == 'nav_learn':
-                    widget.set_color(btn_color if self.ids.content_manager.current == 'learn' else (0.2, 0.2, 0.2, 1))
-                else:
-                    widget.set_color(btn_color)
+    def update_parts_label(self, val):
+        self.ids.parts_label.text = "Авто" if val == 0 else str(int(val))
 
-    def set_bg(self, color):
-        COLORS["bg_app"] = color
+    # --- НАСТРОЙКИ ---
+    def set_theme_btn(self, color):
+        THEME["btn"] = color
+        # Перекрашиваем все кнопки
+        for w in self.walk():
+            if isinstance(w, ColorButton) and w.id not in ['nav_chat', 'nav_new', 'nav_learn']:
+                w.set_color(color)
+        self.switch(self.ids.content_manager.current)
+
+    def set_theme_bg(self, color):
+        THEME["bg"] = color
         Window.clearcolor = color
+        # Меняем цвет текста в зависимости от фона
         if color[0] > 0.5:
-            COLORS["text"] = (0, 0, 0, 1)
+            THEME["text"] = (0, 0, 0, 1)
+            THEME["chat_bot"] = (0.85, 0.85, 0.85, 1)
         else:
-            COLORS["text"] = (1, 1, 1, 1)
+            THEME["text"] = (1, 1, 1, 1)
+            THEME["chat_bot"] = (0.15, 0.15, 0.15, 1)
+        
+        # Обновляем текст на экранах (просто перезагружаем текущий экран)
+        self.ids.status_label.color = THEME["text"]
+        for lbl in self.ids.chat_container.children:
+            if isinstance(lbl, Label):
+                lbl.color = THEME["text"]
 
-    # === ЧАТ ===
+    # --- ЗАГРУЗКА ---
+    def save_manual(self):
+        text = self.ids.manual_text.text.strip()
+        if text:
+            try:
+                note_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+                with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f:
+                    json.dump({"id": note_id, "text": text}, f, ensure_ascii=False)
+                self.ids.manual_text.text = ''
+                self.ids.status_label.text = 'Сохранено!'
+            except:
+                self.ids.status_label.text = 'Ошибка сохранения'
+
+    # --- ЧАТ ---
     def send_chat(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
@@ -357,8 +372,6 @@ class MainScreen(Screen):
         
         def worker():
             ans = safe_openrouter_request(self.chat_history)
-            if ans and not ans.startswith("Лимит"):
-                self.chat_history.append({'role': 'assistant', 'content': ans})
             self.update_chat(ans, loading)
         threading.Thread(target=worker, daemon=True).start()
 
@@ -367,20 +380,15 @@ class MainScreen(Screen):
         if loading.parent: self.ids.chat_container.remove_widget(loading)
         self.add_bubble(self.ids.chat_container, ans, False)
 
-    # === ОБУЧЕНИЕ ===
+    # --- ОБУЧЕНИЕ ---
     def start_learning(self):
         text = self.ids.learn_text.text.strip()
         if not text: return
-        self.learn_context = text
         self.ids.lessons_box.clear_widgets()
         self.ids.learn_box.clear_widgets()
         
-        try:
-            parts = int(self.ids.parts_input.text)
-        except:
-            parts = 0
-            
-        prompt = f"Разбей текст на {parts} частей." if parts > 0 else "Разбей текст на логические части (3-7)."
+        parts = int(self.ids.parts_slider.value)
+        prompt = f"Разбей на {parts} частей." if parts > 0 else "Разбей на 3-7 частей."
         self.add_bubble(self.ids.learn_box, "Составляю план...", False)
         
         def worker():
@@ -394,11 +402,10 @@ class MainScreen(Screen):
         if not plan or plan.startswith("Лимит"):
             self.add_bubble(self.ids.learn_box, f"Ошибка: {plan}", False)
             return
-            
         self.add_bubble(self.ids.learn_box, "План готов:", False)
         for line in plan.split('\n'):
             if line.strip() and line[0].isdigit():
-                btn = ColorButton(text=line, size_hint_y=None, height=dp(50), bg_color=COLORS["btn"])
+                btn = ColorButton(text=line, size_hint_y=None, height=dp(50), bg_color=THEME["btn"])
                 btn.bind(on_release=lambda b, l=line: self.open_lesson(l, text))
                 self.ids.lessons_box.add_widget(btn)
 
@@ -411,7 +418,7 @@ class MainScreen(Screen):
         popup.open()
         
         def worker():
-            ans = safe_openrouter_request([{"role": "user", "content": f"Объясни '{title}' простым текстом. Текст:\n{context[:2000]}"}], 3000)
+            ans = safe_openrouter_request([{"role": "user", "content": f"Объясни '{title}'. Текст:\n{context[:2000]}"}], 3000)
             self.show_full_lesson(popup, ans)
         threading.Thread(target=worker, daemon=True).start()
 
@@ -429,32 +436,17 @@ class MainScreen(Screen):
         content.add_widget(btn)
         popup.content = content
 
-    def send_learn(self):
-        text = self.ids.learn_input.text.strip()
-        if not text: return
-        self.ids.learn_input.text = ''
-        self.add_bubble(self.ids.learn_box, text, True)
-        def worker():
-            ans = safe_openrouter_request([{"role": "user", "content": text}])
-            self.update_learn(ans)
-        threading.Thread(target=worker, daemon=True).start()
-
-    @mainthread
-    def update_learn(self, ans):
-        self.add_bubble(self.ids.learn_box, ans, False)
-
-    # === ПУЗЫРИ (Без вылетов) ===
+    # --- ПУЗЫРИ ---
     def add_bubble(self, container, text, is_user):
         box = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
         bubble = BoxLayout(orientation='vertical', size_hint_y=None, spacing=dp(5))
         
         lbl = Label(text=text, size_hint_y=None, text_size=(dp(250), None), 
-                    halign='right' if is_user else 'left', valign='top',
-                    color=COLORS["text"])
+                    halign='right' if is_user else 'left', valign='top', color=THEME["text"])
         lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
         
         with bubble.canvas.before:
-            Color(*(COLORS["chat_user"]) if is_user else COLORS["chat_bot"])
+            Color(*(THEME["chat_user"]) if is_user else THEME["chat_bot"])
             rect = Rectangle(pos=bubble.pos, size=bubble.size)
         bubble.bind(pos=lambda *x: setattr(rect, 'pos', bubble.pos))
         bubble.bind(size=lambda *x: setattr(rect, 'size', bubble.size))
