@@ -20,6 +20,7 @@ from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
 from kivy.animation import Animation
+from kivy.graphics import Color, Rectangle, RoundedRectangle
 
 # ============================================================
 # НАСТРОЙКА
@@ -32,18 +33,10 @@ ssl_context.check_hostname = False
 ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
-
-def get_key():
-    p1 = "sk-or-v1-71d88394a7c915b6"
-    p2 = "382385eb96fde7e8e5892b42bb5e08f41f6432ea72e57196"
-    return p1 + p2
-
-OPENROUTER_API_KEY = get_key()
+OPENROUTER_API_KEY = "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"
 MODEL_NAME = "openrouter/free"
 
-NOTES_FOLDER = ""
-COURSES_FOLDER = ""
-CACHE_FILE = ""
+NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = "", "", ""
 
 def init_storage():
     global NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE
@@ -53,29 +46,20 @@ def init_storage():
         COURSES_FOLDER = os.path.join(base, "courses")
         os.makedirs(NOTES_FOLDER, exist_ok=True)
         os.makedirs(COURSES_FOLDER, exist_ok=True)
-        CACHE_FILE = os.path.join(base, "chat_cache.json")
+        CACHE_FILE = os.path.join(base, "cache.json")
         
-        # Копируем файлы из GitHub (если они есть) при первом запуске
-        copy_github_files()
-    except: 
-        NOTES_FOLDER = "."
-        COURSES_FOLDER = "."
-        CACHE_FILE = "chat_cache.json"
-
-def copy_github_files():
-    try:
+        # Копируем файлы из GitHub при первом запуске
         if os.path.exists("default_notes"):
             for f in os.listdir("default_notes"):
-                if f.endswith('.json'):
-                    shutil.copy(os.path.join("default_notes", f), NOTES_FOLDER)
+                if f.endswith('.json'): shutil.copy(os.path.join("default_notes", f), NOTES_FOLDER)
         if os.path.exists("default_courses"):
             for f in os.listdir("default_courses"):
-                if f.endswith('.json'):
-                    shutil.copy(os.path.join("default_courses", f), COURSES_FOLDER)
-    except: pass
+                if f.endswith('.json'): shutil.copy(os.path.join("default_courses", f), COURSES_FOLDER)
+    except: 
+        NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = ".", ".", "cache.json"
 
 # ============================================================
-# ПРОВЕРКА ИНТЕРНЕТА И ЛОКАЛЬНЫЙ ПОИСК
+# ФУНКЦИИ
 # ============================================================
 def check_internet():
     try:
@@ -83,47 +67,18 @@ def check_internet():
         return True
     except: return False
 
-def local_search(question):
-    notes = get_all_notes()
-    if not notes: return "У вас пока нет сохраненных конспектов."
-    words = [w.lower().strip('.,!?;:()[]{}"') for w in question.split() if len(w) > 3]
-    if not words: return "Вопрос слишком короткий."
-    best_notes = []
-    for note in notes:
-        text_lower = note.get('text', '').lower()
-        score = sum(text_lower.count(w) for w in words)
-        if score > 0:
-            best_notes.append((score, note.get('text', '')))
-    if not best_notes:
-        return "В ваших конспектах нет информации по этому вопросу (нет интернета для запроса к ИИ)."
-    best_notes.sort(key=lambda x: -x[0])
-    top_text = best_notes[0][1]
-    first_word = words[0]
-    idx = top_text.lower().find(first_word)
-    if idx == -1: idx = 0
-    start = max(0, idx - 150)
-    end = min(len(top_text), idx + 350)
-    snippet = top_text[start:end].strip()
-    return f"[Офлайн-режим] Нашел в конспекте:\n\n...{snippet}...\n\n(Подключите интернет для полного ответа от ИИ)"
-
-# ============================================================
-# РАБОТА С ФАЙЛАМИ
-# ============================================================
 def load_cache():
     if not os.path.exists(CACHE_FILE): return {}
     try:
         with open(CACHE_FILE, 'r', encoding='utf-8') as f: return json.load(f)
     except: return {}
 
-def save_to_cache(question, answer):
+def save_to_cache(q, a):
     cache = load_cache()
-    cache[question.strip().lower()] = answer
+    cache[q.strip().lower()] = a
     try:
         with open(CACHE_FILE, 'w', encoding='utf-8') as f: json.dump(cache, f, ensure_ascii=False)
     except: pass
-
-def get_from_cache(question):
-    return load_cache().get(question.strip().lower(), None)
 
 def get_all_notes():
     notes = []
@@ -131,45 +86,78 @@ def get_all_notes():
     for fname in sorted(os.listdir(NOTES_FOLDER), reverse=True):
         if fname.endswith('.json'):
             try:
-                with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: 
-                    notes.append(json.load(f))
+                with open(os.path.join(NOTES_FOLDER, fname), 'r', encoding='utf-8') as f: notes.append(json.load(f))
             except: pass
     return notes
 
-def find_relevant_notes(question):
+def find_relevant_notes(q):
     notes = get_all_notes()
     if not notes: return ""
-    words = [w.lower().strip('.,!?;:()[]{}"') for w in question.split() if len(w) > 3]
+    words = [w.lower().strip('.,!?;:()[]{}"') for w in q.split() if len(w) > 3]
     if not words: return ""
-    scored_notes = []
+    scored = []
     for note in notes:
-        text_lower = note.get('text', '').lower()
-        score = sum(text_lower.count(w) for w in words)
-        if score > 0: scored_notes.append((score, note))
-    scored_notes.sort(key=lambda x: -x[0])
-    top_notes = [n[1] for n in scored_notes[:3]]
-    if not top_notes: return ""
-    return "\n\n---\n\n".join([f"Конспект: {n.get('title', '')}\n{n.get('text', '')}" for n in top_notes])[:4000]
+        score = sum(note.get('text', '').lower().count(w) for w in words)
+        if score > 0: scored.append((score, note))
+    scored.sort(key=lambda x: -x[0])
+    top = [n[1] for n in scored[:3]]
+    return "\n\n---\n\n".join([f"Конспект: {n.get('title', '')}\n{n.get('text', '')}" for n in top])[:4000] if top else ""
 
-# ============================================================
-# ЗАПРОС К OPENROUTER
-# ============================================================
 def safe_openrouter_request(messages):
     try:
         url = "https://openrouter.ai/api/v1/chat/completions"
         headers = {"Content-Type": "application/json", "Authorization": f"Bearer {OPENROUTER_API_KEY}"}
-        payload = {"model": MODEL_NAME, "messages": messages, "temperature": 0.5, "max_tokens": 1500}
+        
+        # ЖЕСТКОЕ ПРАВИЛО: Только русский язык
+        sys_instruction = {
+            "role": "system", 
+            "content": "Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Запрещено использовать английский язык, кроме названий функций или кода. Не используй markdown-таблицы, звездочки и сложные математические символы (пиши словами: 'в степени', 'корень из')."
+        }
+        
+        final_messages = [sys_instruction] + messages
+        payload = {"model": MODEL_NAME, "messages": final_messages, "temperature": 0.5, "max_tokens": 1500}
+        
         req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
         with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
             return json.loads(response.read().decode('utf-8'))["choices"][0]["message"]["content"].strip()
+            
     except urllib.error.HTTPError as e: return f"Ошибка API ({e.code})"
     except Exception as e: return f"Ошибка: {str(e)}"
+
+def save_note(text):
+    try:
+        note_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: 
+            json.dump({"id": note_id, "title": text[:20], "text": text}, f, ensure_ascii=False)
+    except: pass
+
+# ============================================================
+# КРАСИВАЯ КНОПКА
+# ============================================================
+class ModernButton(Button):
+    def __init__(self, **kwargs):
+        self.bg_color = kwargs.pop('bg_color', (0.15, 0.45, 0.85, 1))
+        super().__init__(**kwargs)
+        self.background_normal = ''
+        self.background_down = ''
+        self.background_color = (0, 0, 0, 0)
+        
+        with self.canvas.before:
+            self.color_inst = Color(*self.bg_color)
+            self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(15)])
+            
+        self.bind(pos=self.update_rect, size=self.update_rect)
+
+    def update_rect(self, *args):
+        self.rect.pos = self.pos
+        self.rect.size = self.size
 
 # ============================================================
 # ИНТЕРФЕЙС
 # ============================================================
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
+#:import ModernButton __main__.ModernButton
 
 <MainScreen>:
     BoxLayout:
@@ -203,18 +191,16 @@ KV = """
                         
                         TextInput:
                             id: chat_input
-                            hint_text: 'Вопрос по конспектам...'
+                            hint_text: 'Вопрос...'
                             multiline: False
                             input_type: 'text'
-                            padding: dp(15), dp(15)
                             on_text_validate: root.send_chat_message()
                             
-                        Button:
+                        ModernButton:
                             text: '▶'
                             size_hint_x: None
-                            width: dp(50)
-                            background_normal: ''
-                            background_color: 0.15, 0.45, 0.85, 1
+                            width: dp(55)
+                            bg_color: (0.15, 0.45, 0.85, 1)
                             on_release: root.send_chat_message()
 
             # === ЗАГРУЗКА ===
@@ -231,36 +217,25 @@ KV = """
                         size_hint_y: None
                         height: dp(50)
                         multiline: False
-                        input_type: 'text'
                         
-                    Button:
+                    ModernButton:
                         text: 'Распознать фото'
                         size_hint_y: None
                         height: dp(55)
-                        background_normal: ''
-                        background_color: 0.55, 0.3, 0.8, 1
+                        bg_color: (0.55, 0.3, 0.8, 1)
                         on_release: root.process_photo_by_path()
-                        
-                    Label:
-                        id: photo_status
-                        text: 'Или введите текст вручную'
-                        size_hint_y: None
-                        height: dp(30)
-                        color: 0.4, 0.4, 0.4, 1
                         
                     TextInput:
                         id: manual_text
-                        hint_text: 'Введите конспект...'
+                        hint_text: 'Введите текст...'
                         multiline: True
-                        input_type: 'text'
                         size_hint_y: 1
                         
-                    Button:
+                    ModernButton:
                         text: 'Сохранить текст'
                         size_hint_y: None
-                        height: dp(50)
-                        background_normal: ''
-                        background_color: 0.2, 0.6, 0.4, 1
+                        height: dp(55)
+                        bg_color: (0.2, 0.6, 0.4, 1)
                         on_release: root.save_manual_text()
 
             # === ОБУЧЕНИЕ ===
@@ -275,7 +250,6 @@ KV = """
                         id: learn_text_input
                         hint_text: 'Вставьте конспект для обучения...'
                         multiline: True
-                        input_type: 'text'
                         size_hint_y: 0.3
                         
                     BoxLayout:
@@ -283,16 +257,14 @@ KV = """
                         height: dp(55)
                         spacing: dp(10)
                         
-                        Button:
+                        ModernButton:
                             text: 'Составить план'
-                            background_normal: ''
-                            background_color: 0.2, 0.6, 0.4, 1
+                            bg_color: (0.2, 0.6, 0.4, 1)
                             on_release: root.start_learning()
                             
-                        Button:
-                            text: 'Загрузить старый'
-                            background_normal: ''
-                            background_color: 0.8, 0.5, 0.2, 1
+                        ModernButton:
+                            text: 'Загрузить'
+                            bg_color: (0.8, 0.5, 0.2, 1)
                             on_release: root.load_saved_course()
                         
                     ScrollView:
@@ -303,14 +275,6 @@ KV = """
                             size_hint_y: None
                             height: self.minimum_height
                             spacing: dp(8)
-                            
-                    Button:
-                        text: 'Задать вопрос по уроку'
-                        size_hint_y: None
-                        height: dp(40)
-                        background_normal: ''
-                        background_color: 0.55, 0.3, 0.8, 1
-                        on_release: root.ask_extra_question()
                             
                     ScrollView:
                         id: learn_scroll
@@ -328,45 +292,44 @@ KV = """
                         
                         TextInput:
                             id: learn_input
-                            hint_text: 'Ваш ответ или вопрос...'
+                            hint_text: 'Ваш ответ...'
                             multiline: False
-                            input_type: 'text'
                             on_text_validate: root.send_learn_message()
                             
-                        Button:
+                        ModernButton:
                             text: '▶'
                             size_hint_x: None
-                            width: dp(50)
-                            background_normal: ''
-                            background_color: 0.55, 0.3, 0.8, 1
+                            width: dp(55)
+                            bg_color: (0.55, 0.3, 0.8, 1)
                             on_release: root.send_learn_message()
 
         # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
             size_hint_y: None
-            height: dp(55)
-            spacing: dp(2)
+            height: dp(60)
+            spacing: dp(8)
+            padding: dp(5), dp(5)
+            canvas.before:
+                Color:
+                    rgba: 1, 1, 1, 1
+                Rectangle:
+                    pos: self.pos
+                    size: self.size
             
-            Button:
+            ModernButton:
                 id: btn_nav_chat
                 text: 'Чат'
-                font_size: '14sp'
-                background_normal: ''
-                background_color: 0.4, 0.4, 0.45, 1
+                bg_color: (0.4, 0.4, 0.45, 1)
                 on_release: root.switch_nav('chat')
-            Button:
+            ModernButton:
                 id: btn_nav_new
                 text: 'Загрузка'
-                font_size: '14sp'
-                background_normal: ''
-                background_color: 0.4, 0.4, 0.45, 1
+                bg_color: (0.4, 0.4, 0.45, 1)
                 on_release: root.switch_nav('new')
-            Button:
+            ModernButton:
                 id: btn_nav_learn
                 text: 'Обучение'
-                font_size: '14sp'
-                background_normal: ''
-                background_color: 0.4, 0.4, 0.45, 1
+                bg_color: (0.4, 0.4, 0.45, 1)
                 on_release: root.switch_nav('learn')
 """
 
@@ -388,19 +351,13 @@ class MainScreen(Screen):
 
     def switch_nav(self, name):
         self.ids.content_manager.current = name
-        self.ids.btn_nav_chat.background_color = (0.4, 0.4, 0.45, 1)
-        self.ids.btn_nav_new.background_color = (0.4, 0.4, 0.45, 1)
-        self.ids.btn_nav_learn.background_color = (0.4, 0.4, 0.45, 1)
-        if name == 'chat': self.ids.btn_nav_chat.background_color = (0.15, 0.45, 0.85, 1)
-        elif name == 'new': self.ids.btn_nav_new.background_color = (0.15, 0.45, 0.85, 1)
-        elif name == 'learn': self.ids.btn_nav_learn.background_color = (0.15, 0.45, 0.85, 1)
+        self.ids.btn_nav_chat.color_inst.rgba = (0.15, 0.45, 0.85, 1) if name == 'chat' else (0.4, 0.4, 0.45, 1)
+        self.ids.btn_nav_new.color_inst.rgba = (0.15, 0.45, 0.85, 1) if name == 'new' else (0.4, 0.4, 0.45, 1)
+        self.ids.btn_nav_learn.color_inst.rgba = (0.15, 0.45, 0.85, 1) if name == 'learn' else (0.4, 0.4, 0.45, 1)
 
     def process_photo_by_path(self):
         path = self.ids.photo_path.text.strip()
-        if not path:
-            self.ids.photo_status.text = "Введите путь!"
-            return
-        self.ids.photo_status.text = 'Обработка...'
+        if not path: return
         threading.Thread(target=self.process_photo, args=(path,), daemon=True).start()
 
     def process_photo(self, path):
@@ -414,13 +371,12 @@ class MainScreen(Screen):
             with urllib.request.urlopen(req, context=ssl_context, timeout=30) as response:
                 result = json.loads(response.read().decode('utf-8'))
             text = result.get('ParsedResults', [{}])[0].get('ParsedText', '')
-            self.update_photo_result(text, 'Готово! Сохранено.')
+            self.update_photo_result(text)
             save_note(text)
-        except Exception as e: self.update_photo_result(f'Ошибка: {e}', 'Ошибка')
+        except Exception as e: self.update_photo_result(f'Ошибка: {e}')
 
     @mainthread
-    def update_photo_result(self, text, status):
-        self.ids.photo_status.text = status
+    def update_photo_result(self, text): self.ids.photo_status.text = 'Готово!'
 
     def save_manual_text(self):
         text = self.ids.manual_text.text.strip()
@@ -429,27 +385,22 @@ class MainScreen(Screen):
             self.ids.manual_text.text = ''
             self.ids.photo_status.text = 'Сохранено!'
 
-    # --- ЧАТ ---
     def send_chat_message(self):
         text = self.ids.chat_input.text.strip()
         if not text: return
         self.ids.chat_input.text = ''
         self.add_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
-        loading = Label(text='...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
+        loading = Label(text='...', size_hint_y=None, height=dp(30))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
             try:
-                cached = get_from_cache(text)
-                if cached:
-                    self.update_chat(f"📁 [Из памяти]\n\n{cached}", loading)
-                    return
-                if not check_internet():
-                    self.update_chat("Нет интернета. Подключите сеть.", loading)
-                    return
+                cached = load_cache().get(text.strip().lower())
+                if cached: self.update_chat(f"📁 [Из памяти]\n\n{cached}", loading); return
+                if not check_internet(): self.update_chat("Нет интернета.", loading); return
                 context = find_relevant_notes(text)
-                sys_p = "Отвечай на русском. Используй ТОЛЬКО текст из конспекта:\n" + context if context else "Нет конспектов."
+                sys_p = "Отвечай на русском. ТОЛЬКО конспект:\n" + context if context else "Нет конспектов."
                 ans = safe_openrouter_request([{"role": "system", "content": sys_p}] + self.chat_history)
                 if ans and not ans.startswith("Ошибка"):
                     save_to_cache(text, ans)
@@ -463,24 +414,17 @@ class MainScreen(Screen):
         if loading and loading.parent: self.ids.chat_container.remove_widget(loading)
         self.add_bubble(self.ids.chat_container, answer, is_user=False)
 
-    # --- ОБУЧЕНИЕ ---
     def start_learning(self):
         text = self.ids.learn_text_input.text.strip()
-        if not text:
-            self.add_bubble(self.ids.learn_container, "Вставьте текст.", is_user=False)
-            return
+        if not text: return
         self.learning_context = text
         self.ids.learn_container.clear_widgets()
         self.ids.lessons_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, "Составляю план уроков...", is_user=False)
+        self.add_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
         
         def worker():
             try:
-                prompt = (
-                    "Ты ИИ-учитель. Разбей текст на 3-4 урока. "
-                    "ВАЖНО: Пиши ТОЛЬКО названия уроков цифрами. Никаких таблиц и символов. "
-                    f"Текст:\n{self.learning_context[:2500]}"
-                )
+                prompt = "Разбей на 3-4 урока. ТОЛЬКО названия цифрами. Текст:\n" + self.learning_context[:2500]
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
                 self.show_lessons(ans, self.learning_context)
             except Exception as e: self.update_learn(f"Ошибка: {e}", None)
@@ -489,85 +433,53 @@ class MainScreen(Screen):
     def load_saved_course(self):
         try:
             files = [f for f in os.listdir(COURSES_FOLDER) if f.endswith('.json')]
-            if not files: raise Exception("Нет сохраненных курсов")
-            with open(os.path.join(COURSES_FOLDER, files[0]), 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            if not files: raise Exception("Нет курсов")
+            with open(os.path.join(COURSES_FOLDER, files[0]), 'r', encoding='utf-8') as f: data = json.load(f)
             self.learning_context = data['context']
             self.ids.learn_container.clear_widgets()
             self.ids.lessons_container.clear_widgets()
-            self.add_bubble(self.ids.learn_container, "Загружен сохраненный курс.", is_user=False)
+            self.add_bubble(self.ids.learn_container, "Загружен курс.", is_user=False)
             self.show_lessons(data['plan'], data['context'])
-        except Exception as e:
-            self.add_bubble(self.ids.learn_container, f"Ошибка загрузки: {e}", is_user=False)
+        except Exception as e: self.add_bubble(self.ids.learn_container, f"Ошибка: {e}", is_user=False)
 
     @mainthread
     def show_lessons(self, raw_plan, context):
         self.ids.learn_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, "План готов. Выбери урок:", is_user=False)
-        
+        self.add_bubble(self.ids.learn_container, "План готов:", is_user=False)
         try:
-            course_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-            with open(os.path.join(COURSES_FOLDER, f"course_{course_id}.json"), 'w', encoding='utf-8') as f:
+            with open(os.path.join(COURSES_FOLDER, f"course_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"), 'w', encoding='utf-8') as f:
                 json.dump({"plan": raw_plan, "context": context}, f, ensure_ascii=False)
         except: pass
-
-        lines = [line.strip() for line in raw_plan.split('\n') if line.strip()]
-        for line in lines:
-            if line[0].isdigit() or line.startswith('-'):
-                btn = Button(text=line, size_hint_y=None, height=dp(50), background_normal='', background_color=(0.15, 0.45, 0.85, 1))
+        for line in [l.strip() for l in raw_plan.split('\n') if l.strip()]:
+            if line[0].isdigit():
+                btn = ModernButton(text=line, size_hint_y=None, height=dp(50), bg_color=(0.15, 0.45, 0.85, 1))
                 btn.bind(on_release=lambda b, l=line: self.start_lesson(l))
                 self.ids.lessons_container.add_widget(btn)
 
     def start_lesson(self, lesson_title):
         self.ids.learn_container.clear_widgets()
         self.add_bubble(self.ids.learn_container, f"Урок: {lesson_title}", is_user=False)
-        
         if lesson_title in self.course_cache:
             self.add_bubble(self.ids.learn_container, self.course_cache[lesson_title], is_user=False)
-            self.learn_history = [{'role': 'assistant', 'content': self.course_cache[lesson_title]}]
             return
-
-        if not check_internet():
-            self.add_bubble(self.ids.learn_container, "Нет интернета для генерации урока. Читайте конспект.", is_user=False)
-            return
-
+        if not check_internet(): return
         def worker():
             try:
-                prompt = (
-                    f"Ты ИИ-учитель. Объясни тему '{lesson_title}' простым текстом. "
-                    "ЗАПРЕЩЕНО использовать markdown-таблицы, звездочки, решетки и сложные математические символы (пиши словами: 'в степени', 'корень из'). "
-                    f"Текст конспекта:\n{self.learning_context[:2500]}\n"
-                    "В конце задай 1 вопрос ученику."
-                )
+                prompt = f"Объясни '{lesson_title}'. Без таблиц. Текст:\n{self.learning_context[:2500]}"
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
-                if ans and not ans.startswith("Ошибка"):
-                    self.course_cache[lesson_title] = ans
-                    self.learn_history = [{'role': 'assistant', 'content': ans}]
+                if ans and not ans.startswith("Ошибка"): self.course_cache[lesson_title] = ans
                 self.update_learn(ans, None)
             except Exception as e: self.update_learn(f"Ошибка: {e}", None)
         threading.Thread(target=worker, daemon=True).start()
-
-    def ask_extra_question(self):
-        self.ids.learn_input.focus = True
 
     def send_learn_message(self):
         text = self.ids.learn_input.text.strip()
         if not text: return
         self.ids.learn_input.text = ''
         self.add_bubble(self.ids.learn_container, text, is_user=True)
-        self.learn_history.append({'role': 'user', 'content': text})
-        loading = Label(text='Думаю...', size_hint_y=None, height=dp(30), color=(0.5, 0.5, 0.5, 1))
-        self.ids.learn_container.add_widget(loading)
-        
         def worker():
-            try:
-                if not check_internet():
-                    self.update_learn("Нет интернета.", loading)
-                    return
-                ans = safe_openrouter_request(self.learn_history)
-                self.learn_history.append({'role': 'assistant', 'content': ans})
-                self.update_learn(ans, loading)
-            except Exception as e: self.update_learn(f"Ошибка: {e}", loading)
+            ans = safe_openrouter_request([{"role": "user", "content": text}])
+            self.update_learn(ans, None)
         threading.Thread(target=worker, daemon=True).start()
 
     @mainthread
@@ -575,50 +487,24 @@ class MainScreen(Screen):
         if loading and loading.parent: self.ids.learn_container.remove_widget(loading)
         self.add_bubble(self.ids.learn_container, answer, is_user=False)
 
-    # --- ДИЗАЙН ПУЗЫРЕЙ ---
     def add_bubble(self, container, text, is_user):
         layout = BoxLayout(orientation='horizontal', size_hint_y=None, spacing=dp(5))
-        bg_color = (0.85, 0.92, 1, 1) if is_user else (1, 1, 1, 1)
-        
-        lbl = Label(
-            text=text, size_hint_y=None, text_size=(dp(280), None), 
-            halign='right' if is_user else 'left', valign='top',
-            color=(0, 0, 0, 1), markup=False
-        )
-        
+        lbl = Label(text=text, size_hint_y=None, text_size=(dp(280), None), halign='right' if is_user else 'left', valign='top', markup=False)
         with lbl.canvas.before:
-            from kivy.graphics import Color, Rectangle
-            Color(*bg_color)
+            Color(*(0.85, 0.92, 1, 1) if is_user else (1, 1, 1, 1))
             rect = Rectangle(pos=lbl.pos, size=lbl.size)
         lbl.bind(pos=lambda *x: setattr(rect, 'pos', lbl.pos))
         lbl.bind(size=lambda *x: setattr(rect, 'size', lbl.size))
-        
         lbl.padding = (dp(10), dp(10))
-        
-        def update_height(instance, texture_size):
-            instance.height = texture_size[1] + dp(20)
-            layout.height = instance.height
-            container.height = container.minimum_height
-        lbl.bind(texture_size=update_height)
-        
+        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1] + dp(20)))
         if is_user:
             layout.add_widget(Label(size_hint_x=0.1))
             layout.add_widget(lbl)
         else:
             layout.add_widget(lbl)
             layout.add_widget(Label(size_hint_x=0.1))
-            
         container.add_widget(layout)
-        layout.opacity = 0
-        Animation(opacity=1, d=0.2).start(layout)
         Clock.schedule_once(lambda dt: setattr(container, 'height', container.minimum_height), 0.1)
-
-def save_note(text):
-    try:
-        note_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-        with open(os.path.join(NOTES_FOLDER, f"{note_id}.json"), 'w', encoding='utf-8') as f: 
-            json.dump({"id": note_id, "title": text[:20], "text": text}, f, ensure_ascii=False)
-    except: pass
 
 class NotesApp(App):
     def build(self):
