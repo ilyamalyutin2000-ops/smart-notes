@@ -10,9 +10,15 @@ requirements = python3,kivy
 
 orientation = portrait
 fullscreen = 0
-android.permissions = INTERNET, ACCESS_NETWORK_STATE
+
+# РАЗРЕШЕНИЯ ДЛЯ ANDROID 13+
+android.permissions = INTERNET, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE
+
+# API 33 (Android 13)
 android.api = 33
 android.minapi = 21
+
+# NDK 25b (совместим с Android 13)
 android.ndk = 25b
 android.archs = arm64-v8a
 android.accept_sdk_license = True
