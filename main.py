@@ -48,10 +48,12 @@ MODEL_NAME = "openrouter/free"
 
 BASE_DIR, NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = "", "", "", ""
 
+# Настройки цветов
 THEME = {
-    "bg_color": (0.15, 0.45, 0.85, 1),
-    "chat_bot_bg": (0.2, 0.2, 0.2, 1),
-    "chat_user_bg": (0.15, 0.35, 0.6, 1),
+    "app_bg": (0.07, 0.07, 0.07, 1), # Темный фон приложения
+    "btn_color": (0.15, 0.45, 0.85, 1), # Синий по умолчанию
+    "chat_bot_bg": (0.15, 0.15, 0.15, 1),
+    "chat_user_bg": (0.1, 0.3, 0.6, 1),
     "text_color": (1, 1, 1, 1)
 }
 
@@ -105,22 +107,30 @@ def save_note(text):
     except: return False
 
 # ============================================================
-# КНОПКИ
+# УМНЫЕ КНОПКИ (которые меняют цвет)
 # ============================================================
 class ModernButton(Button):
     def __init__(self, **kwargs):
-        self.bg_color = kwargs.pop('bg_color', THEME["bg_color"])
+        # Если передан цвет, используем его, иначе - цвет из темы
+        self.bg_color = kwargs.pop('bg_color', THEME["btn_color"])
         super().__init__(**kwargs)
         self.background_normal = ''
         self.background_down = ''
         self.background_color = (0, 0, 0, 0)
+        
         with self.canvas.before:
             self.color_inst = Color(*self.bg_color)
             self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[dp(12)])
+            
         self.bind(pos=self.update_rect, size=self.update_rect)
+
     def update_rect(self, *args):
         self.rect.pos = self.pos
         self.rect.size = self.size
+
+    def update_color(self, new_color):
+        self.bg_color = new_color
+        self.color_inst.rgba = new_color
 
 # ============================================================
 # ИНТЕРФЕЙС
@@ -159,7 +169,7 @@ KV = """
                             id: chat_input
                             hint_text: 'Вопрос...'
                             multiline: False
-                            background_color: 0.2, 0.2, 0.2, 1
+                            background_color: 0.15, 0.15, 0.15, 1
                             foreground_color: 1, 1, 1, 1
                             on_text_validate: root.send_chat_message()
                         ModernButton:
@@ -184,7 +194,7 @@ KV = """
                         hint_text: 'Введите конспект...'
                         multiline: True
                         size_hint_y: 1
-                        background_color: 0.2, 0.2, 0.2, 1
+                        background_color: 0.15, 0.15, 0.15, 1
                         foreground_color: 1, 1, 1, 1
                     ModernButton:
                         text: 'Сохранить'
@@ -212,6 +222,7 @@ KV = """
                             text: "Авто"
                             color: 1, 1, 1, 1
                     
+                    # Безопасный слайдер (без on_value, чтобы не вылетало)
                     Slider:
                         id: parts_slider
                         min: 0
@@ -220,14 +231,13 @@ KV = """
                         step: 1
                         size_hint_y: None
                         height: dp(30)
-                        on_value: root.parts_label.text = "Авто" if self.value == 0 else str(int(self.value))
                         
                     TextInput:
                         id: learn_text_input
                         hint_text: 'Вставьте конспект для обучения...'
                         multiline: True
                         size_hint_y: 0.3
-                        background_color: 0.2, 0.2, 0.2, 1
+                        background_color: 0.15, 0.15, 0.15, 1
                         foreground_color: 1, 1, 1, 1
                         
                     ModernButton:
@@ -263,7 +273,7 @@ KV = """
                             id: learn_input
                             hint_text: 'Ваш вопрос...'
                             multiline: False
-                            background_color: 0.2, 0.2, 0.2, 1
+                            background_color: 0.15, 0.15, 0.15, 1
                             foreground_color: 1, 1, 1, 1
                             on_text_validate: root.send_learn_message()
                         ModernButton:
@@ -279,11 +289,12 @@ KV = """
                     orientation: 'vertical'
                     padding: dp(15)
                     spacing: dp(15)
-                    Label:
-                        text: "Цвета кнопок"
-                        font_size: '20sp'
-                        color: 1, 1, 1, 1
                     
+                    Label:
+                        text: "Цвет кнопок"
+                        font_size: '18sp'
+                        color: 1, 1, 1, 1
+                        
                     BoxLayout:
                         size_hint_y: None
                         height: dp(50)
@@ -291,20 +302,38 @@ KV = """
                         ModernButton:
                             text: "Синий"
                             bg_color: (0.15, 0.45, 0.85, 1)
-                            on_release: root.change_theme((0.15, 0.45, 0.85, 1))
+                            on_release: root.change_btn_color((0.15, 0.45, 0.85, 1))
                         ModernButton:
                             text: "Зеленый"
                             bg_color: (0.2, 0.6, 0.4, 1)
-                            on_release: root.change_theme((0.2, 0.6, 0.4, 1))
+                            on_release: root.change_btn_color((0.2, 0.6, 0.4, 1))
                         ModernButton:
                             text: "Красный"
                             bg_color: (0.7, 0.2, 0.2, 1)
-                            on_release: root.change_theme((0.7, 0.2, 0.2, 1))
+                            on_release: root.change_btn_color((0.7, 0.2, 0.2, 1))
                             
-                    ModernButton:
-                        text: "Фиолетовый"
-                        bg_color: (0.55, 0.3, 0.8, 1)
-                        on_release: root.change_theme((0.55, 0.3, 0.8, 1))
+                    Label:
+                        text: "Цвет фона"
+                        font_size: '18sp'
+                        color: 1, 1, 1, 1
+                        
+                    BoxLayout:
+                        size_hint_y: None
+                        height: dp(50)
+                        spacing: dp(10)
+                        ModernButton:
+                            text: "Темный"
+                            bg_color: (0.15, 0.15, 0.15, 1)
+                            on_release: root.change_bg_color((0.07, 0.07, 0.07, 1))
+                        ModernButton:
+                            text: "Серый"
+                            bg_color: (0.3, 0.3, 0.3, 1)
+                            on_release: root.change_bg_color((0.2, 0.2, 0.2, 1))
+                        ModernButton:
+                            text: "Светлый"
+                            bg_color: (0.9, 0.9, 0.9, 1)
+                            color: (0,0,0,1)
+                            on_release: root.change_bg_color((0.9, 0.9, 0.9, 1))
 
         # === НИЖНЯЯ ПАНЕЛЬ ===
         BoxLayout:
@@ -347,23 +376,51 @@ class MainScreen(Screen):
         self.chat_history = []
         self.learning_context = ""
         self.course_cache = {}
+        self.buttons_to_update = [] # Список кнопок для смены цвета
         Clock.schedule_once(self.setup_app, 0.5)
+        
+        # Обновляем текст на слайдере
+        Clock.schedule_interval(self.update_slider_label, 0.1)
 
     def setup_app(self, dt):
         init_storage()
         self.switch_nav('chat')
 
+    def update_slider_label(self, dt):
+        # Безопасное обновление текста ползунка
+        val = int(self.ids.parts_slider.value)
+        text = "Авто" if val == 0 else str(val)
+        if self.ids.parts_label.text != text:
+            self.ids.parts_label.text = text
+
     def switch_nav(self, name):
         self.ids.content_manager.current = name
-        self.ids.btn_nav_chat.color_inst.rgba = THEME["bg_color"] if name == 'chat' else (0.2, 0.2, 0.2, 1)
-        self.ids.btn_nav_new.color_inst.rgba = THEME["bg_color"] if name == 'new' else (0.2, 0.2, 0.2, 1)
-        self.ids.btn_nav_learn.color_inst.rgba = THEME["bg_color"] if name == 'learn' else (0.2, 0.2, 0.2, 1)
+        active_color = THEME["btn_color"]
+        inactive_color = (0.2, 0.2, 0.2, 1)
+        
+        self.ids.btn_nav_chat.color_inst.rgba = active_color if name == 'chat' else inactive_color
+        self.ids.btn_nav_new.color_inst.rgba = active_color if name == 'new' else inactive_color
+        self.ids.btn_nav_learn.color_inst.rgba = active_color if name == 'learn' else inactive_color
 
-    def change_theme(self, color):
-        THEME["bg_color"] = color
-        for btn_id in ['btn_nav_chat', 'btn_nav_new', 'btn_nav_learn']:
-            if btn_id in self.ids:
-                self.ids[btn_id].color_inst.rgba = (0.2, 0.2, 0.2, 1)
+    def change_btn_color(self, color):
+        THEME["btn_color"] = color
+        # Обновляем все кнопки на экранах (кроме навигации, чтобы не сбить логику)
+        for btn in self.walk():
+            if isinstance(btn, ModernButton) and btn.bg_color not in [(0.2, 0.6, 0.4, 1), (0.7, 0.2, 0.2, 1), (0.8, 0.85, 0.9, 1), (0.85, 0.25, 0.25, 1)]:
+                # Пропускаем кнопки сохранения и закрытия
+                if btn.text not in ["Сохранить", "Закрыть"]:
+                    btn.update_color(color)
+        self.switch_nav(self.ids.content_manager.current)
+
+    def change_bg_color(self, color):
+        THEME["app_bg"] = color
+        Window.clearcolor = color
+        # Меняем фон нижней панели
+        self.ids.content_manager.canvas.before.clear()
+        if color[0] > 0.5: # Если светлый фон
+            THEME["text_color"] = (0, 0, 0, 1)
+        else:
+            THEME["text_color"] = (1, 1, 1, 1)
 
     def save_manual_text(self):
         text = self.ids.manual_text.text.strip()
@@ -380,7 +437,7 @@ class MainScreen(Screen):
         self.add_bubble(self.ids.chat_container, text, is_user=True)
         self.chat_history.append({'role': 'user', 'content': text})
         
-        loading = Label(text='...', size_hint_y=None, height=dp(30))
+        loading = Label(text='...', size_hint_y=None, height=dp(30), color=(0.5,0.5,0.5,1))
         self.ids.chat_container.add_widget(loading)
         
         def worker():
@@ -435,7 +492,7 @@ class MainScreen(Screen):
         self.add_bubble(self.ids.learn_container, "План готов:", is_user=False)
         for line in [l.strip() for l in raw_plan.split('\n') if l.strip()]:
             if line[0].isdigit():
-                btn = ModernButton(text=line, size_hint_y=None, height=dp(50), bg_color=THEME["bg_color"])
+                btn = ModernButton(text=line, size_hint_y=None, height=dp(50), bg_color=THEME["btn_color"])
                 btn.bind(on_release=lambda b, l=line: self.open_full_screen_lesson(l))
                 self.ids.lessons_container.add_widget(btn)
 
@@ -445,7 +502,7 @@ class MainScreen(Screen):
             return
 
         content = BoxLayout(orientation='vertical', padding=dp(20))
-        content.add_widget(Label(text=f"Генерирую урок:\n{lesson_title}\n\nПожалуйста, подождите...", halign='center', color=(1,1,1,1)))
+        content.add_widget(Label(text=f"Генерирую урок...", halign='center', color=THEME["text_color"]))
         popup = Popup(title="Загрузка", content=content, size_hint=(0.8, 0.4), auto_dismiss=False)
         popup.open()
 
@@ -471,7 +528,6 @@ class MainScreen(Screen):
         
         scroll = ScrollView()
         
-        # ПРАВИЛЬНЫЙ СИНТАКСИС PYTHON ДЛЯ РИСОВАНИЯ (С WITH)
         with scroll.canvas.before:
             Color(0.1, 0.1, 0.1, 1)
             rect = Rectangle(pos=scroll.pos, size=scroll.size)
@@ -488,11 +544,9 @@ class MainScreen(Screen):
         btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
         
         def copy_smart(instance):
-            import re
             matches = re.findall(r'```(.*?)```', text, re.DOTALL)
             if matches:
-                code_only = "\n\n".join(matches)
-                Clipboard.copy(code_only)
+                Clipboard.copy("\n\n".join(matches))
                 instance.text = "Код скопирован!"
             else:
                 Clipboard.copy(text)
@@ -534,7 +588,7 @@ class MainScreen(Screen):
         lbl = Label(
             text=text, size_hint_y=None, text_size=(dp(250), None), 
             halign='right' if is_user else 'left', valign='top',
-            color=(1, 1, 1, 1), markup=False
+            color=THEME["text_color"], markup=False
         )
         
         with bubble.canvas.before:
