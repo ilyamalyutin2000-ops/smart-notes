@@ -22,29 +22,27 @@ from kivy.graphics import Color, Rectangle, RoundedRectangle
 from kivy.storage.jsonstore import JsonStore
 
 # ============================================================
-# НАСТРОЙКИ (Сохраняются в файл)
+# НАСТРОЙКИ (Живые цвета)
 # ============================================================
 THEME_FILE = "theme.json"
 store = JsonStore(THEME_FILE)
 
-# Загружаем сохраненную тему или ставим дефолт
-if store.exists('settings'):
-    saved = store.get('settings')
-    THEME = {
-        "bg": tuple(saved.get('bg', (0.07, 0.07, 0.07, 1))),
-        "btn": tuple(saved.get('btn', (0.15, 0.45, 0.85, 1))),
-        "text": tuple(saved.get('text', (1, 1, 1, 1))),
-        "chat_user": tuple(saved.get('chat_user', (0.1, 0.3, 0.6, 1))),
-        "chat_bot": tuple(saved.get('chat_bot', (0.15, 0.15, 0.15, 1)))
-    }
-else:
-    THEME = {
+# Цвета по умолчанию
+def get_default_theme():
+    return {
         "bg": (0.07, 0.07, 0.07, 1),
         "btn": (0.15, 0.45, 0.85, 1),
         "text": (1, 1, 1, 1),
         "chat_user": (0.1, 0.3, 0.6, 1),
         "chat_bot": (0.15, 0.15, 0.15, 1)
     }
+
+THEME = get_default_theme()
+if store.exists('settings'):
+    saved = store.get('settings')
+    for k, v in saved.items():
+        if isinstance(v, (list, tuple)):
+            THEME[k] = tuple(v)
 
 Window.clearcolor = THEME["bg"]
 Window.softinput_mode = 'below_target'
@@ -95,6 +93,11 @@ class ColorButton(Button):
         self.rect.pos = self.pos
         self.rect.size = self.size
 
+    def change_color(self, new_color):
+        # Меняем цвет без пересоздания кнопки
+        self.bg_color = new_color
+        self.color_inst.rgba = new_color
+
 KV = """
 #:import SlideTransition kivy.uix.screenmanager.SlideTransition
 #:import ColorButton __main__.ColorButton
@@ -130,6 +133,7 @@ KV = """
                             foreground_color: 1, 1, 1, 1
                             on_text_validate: root.send_chat()
                         ColorButton:
+                            id: btn_send_chat
                             text: '▶'
                             size_hint_x: None
                             width: dp(55)
@@ -153,6 +157,7 @@ KV = """
                         background_color: 0.15, 0.15, 0.15, 1
                         foreground_color: 1, 1, 1, 1
                     ColorButton:
+                        id: btn_save_manual
                         text: 'Сохранить'
                         size_hint_y: None
                         height: dp(55)
@@ -196,6 +201,7 @@ KV = """
                         foreground_color: 1, 1, 1, 1
                         
                     ColorButton:
+                        id: btn_start_learn
                         text: 'Составить план'
                         size_hint_y: None
                         height: dp(55)
@@ -235,15 +241,15 @@ KV = """
                         ColorButton:
                             text: "Синий"
                             bg_color: (0.15, 0.45, 0.85, 1)
-                            on_release: root.save_theme("btn", (0.15, 0.45, 0.85, 1))
+                            on_release: root.apply_live_theme("btn", (0.15, 0.45, 0.85, 1))
                         ColorButton:
                             text: "Зеленый"
                             bg_color: (0.2, 0.6, 0.4, 1)
-                            on_release: root.save_theme("btn", (0.2, 0.6, 0.4, 1))
+                            on_release: root.apply_live_theme("btn", (0.2, 0.6, 0.4, 1))
                         ColorButton:
                             text: "Красный"
                             bg_color: (0.7, 0.2, 0.2, 1)
-                            on_release: root.save_theme("btn", (0.7, 0.2, 0.2, 1))
+                            on_release: root.apply_live_theme("btn", (0.7, 0.2, 0.2, 1))
 
                     Label:
                         text: "Фон приложения:"
@@ -255,12 +261,12 @@ KV = """
                         ColorButton:
                             text: "Темный"
                             bg_color: (0.2, 0.2, 0.2, 1)
-                            on_release: root.save_theme("bg", (0.07, 0.07, 0.07, 1))
+                            on_release: root.apply_live_theme("bg", (0.07, 0.07, 0.07, 1))
                         ColorButton:
                             text: "Светлый"
                             bg_color: (0.9, 0.9, 0.9, 1)
                             color: (0,0,0,1)
-                            on_release: root.save_theme("bg", (0.95, 0.95, 0.95, 1))
+                            on_release: root.apply_live_theme("bg", (0.95, 0.95, 0.95, 1))
 
         BoxLayout:
             size_hint_y: None
@@ -307,21 +313,35 @@ class MainScreen(Screen):
     def update_parts_label(self, val):
         self.ids.parts_label.text = "Авто" if val == 0 else str(int(val))
 
-    # --- СОХРАНЕНИЕ ТЕМЫ (Без вылетов) ---
-    def save_theme(self, key, color):
+    # --- ЖИВАЯ СМЕНА ТЕМЫ ---
+    def apply_live_theme(self, key, color):
         THEME[key] = color
+        
         if key == "bg":
+            Window.clearcolor = color
             if color[0] > 0.5:
                 THEME["text"] = (0, 0, 0, 1)
                 THEME["chat_bot"] = (0.85, 0.85, 0.85, 1)
             else:
                 THEME["text"] = (1, 1, 1, 1)
                 THEME["chat_bot"] = (0.15, 0.15, 0.15, 1)
-        
+            
+            # Обновляем цвета текста на экранах
+            self.ids.chat_input.foreground_color = THEME["text"]
+            self.ids.manual_text.foreground_color = THEME["text"]
+            self.ids.learn_text.foreground_color = THEME["text"]
+            self.ids.status_label.color = THEME["text"]
+            self.ids.parts_label.color = THEME["text"]
+            
+        elif key == "btn":
+            # Меняем цвет у всех кнопок, у которых нет фиксированного цвета
+            for btn_id in ['btn_send_chat', 'btn_save_manual', 'btn_start_learn', 'nav_chat', 'nav_new', 'nav_learn', 'nav_set']:
+                if btn_id in self.ids:
+                    self.ids[btn_id].change_color(color)
+            self.switch(self.ids.content_manager.current)
+
+        # Сохраняем в файл
         store.put('settings', **THEME)
-        # Показываем сообщение, что нужно перезапустить
-        popup = Popup(title="Сохранено", content=Label(text="Цвета сохранены.\nПерезапустите приложение, чтобы применить."), size_hint=(0.8, 0.3))
-        popup.open()
 
     # --- ЗАГРУЗКА ---
     def save_manual(self):
