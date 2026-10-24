@@ -17,6 +17,7 @@ from kivy.uix.scrollview import ScrollView
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
+from kivy.uix.popup import Popup
 from kivy.metrics import dp
 from kivy.utils import get_color_from_hex
 from kivy.core.window import Window
@@ -35,7 +36,6 @@ ssl_context.verify_mode = ssl.CERT_NONE
 
 OCR_API_KEY = "K86772432188957"
 
-# === ТВОЙ ПУЛ КЛЮЧЕЙ (6 ШТУК) ===
 API_KEYS = [
     "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",
     "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",
@@ -62,13 +62,12 @@ def init_storage():
         BASE_DIR, NOTES_FOLDER, COURSES_FOLDER, CACHE_FILE = ".", ".", ".", "cache.json"
 
 # ============================================================
-# УМНАЯ ФУНКЦИЯ ЗАПРОСА (С ПЕРЕКЛЮЧЕНИЕМ КЛЮЧЕЙ)
+# УМНАЯ ФУНКЦИЯ ЗАПРОСА
 # ============================================================
-def safe_openrouter_request(messages):
+def safe_openrouter_request(messages, max_tokens=3000):
     if not API_KEYS:
         return "Ошибка: В коде не указан ни один API-ключ."
 
-    # Пробуем каждый ключ по очереди
     for key in API_KEYS:
         try:
             url = "https://openrouter.ai/api/v1/chat/completions"
@@ -79,33 +78,27 @@ def safe_openrouter_request(messages):
                 "content": "Отвечай ИСКЛЮЧИТЕЛЬНО на русском языке. Не используй markdown-таблицы и сложные символы."
             }
             final_messages = [sys_instruction] + messages
-            payload = {"model": MODEL_NAME, "messages": final_messages, "temperature": 0.5, "max_tokens": 1500}
+            payload = {"model": MODEL_NAME, "messages": final_messages, "temperature": 0.5, "max_tokens": max_tokens}
             
             req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
             
-            with urllib.request.urlopen(req, context=ssl_context, timeout=60) as response:
+            with urllib.request.urlopen(req, context=ssl_context, timeout=90) as response:
                 result = json.loads(response.read().decode('utf-8'))
                 content = result["choices"][0]["message"].get("content")
                 
                 if not content or not content.strip():
-                    continue # Если пустой ответ, пробуем следующий ключ
+                    continue 
                     
                 return content.strip()
                 
         except urllib.error.HTTPError as e:
-            if e.code == 429:
-                # Лимит исчерпан для этого ключа, идем к следующему
-                continue 
-            elif e.code == 401:
-                # Ключ недействителен, идем к следующему
+            if e.code == 429 or e.code == 401:
                 continue
             else:
                 return f"Ошибка API ({e.code})"
         except Exception:
-            # Ошибка сети, пробуем следующий ключ
             continue
             
-    # Если цикл прошел, а ответа нет - значит все ключи кончились
     return "Все ключи исчерпали лимит (429) или недействительны. Попробуйте позже."
 
 def save_note(text):
@@ -330,6 +323,7 @@ class MainScreen(Screen):
         if loading and loading.parent: self.ids.chat_container.remove_widget(loading)
         self.add_bubble(self.ids.chat_container, answer, is_user=False)
 
+    # --- ОБУЧЕНИЕ ---
     def start_learning(self):
         text = self.ids.learn_text_input.text.strip()
         if not text: 
@@ -339,14 +333,14 @@ class MainScreen(Screen):
         self.learning_context = text
         self.ids.learn_container.clear_widgets()
         self.ids.lessons_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, "Составляю план...", is_user=False)
+        self.add_bubble(self.ids.learn_container, "Составляю подробный план...", is_user=False)
         
         def worker():
             try:
-                prompt = f"Составь план из 3 пунктов. ТОЛЬКО цифры. Текст:\n{text[:2000]}"
+                # Просим больше пунктов (до 7)
+                prompt = f"Составь подробный план обучения из 5-7 пунктов по этому тексту. Выведи ТОЛЬКО нумерованный список (1. Название, 2. Название и т.д.). Текст:\n{text[:2000]}"
                 ans = safe_openrouter_request([{"role": "user", "content": prompt}])
                 
-                # Если все ключи сдохли или пустой ответ
                 if not ans or len(ans) < 5 or ans.startswith("Все ключи"): 
                     self.update_learn(f"Не удалось составить план.\n{ans}", None)
                     return
@@ -363,24 +357,69 @@ class MainScreen(Screen):
         for line in [l.strip() for l in raw_plan.split('\n') if l.strip()]:
             if line[0].isdigit():
                 btn = ModernButton(text=line, size_hint_y=None, height=dp(50), bg_color=(0.15, 0.45, 0.85, 1))
-                btn.bind(on_release=lambda b, l=line: self.start_lesson(l))
+                btn.bind(on_release=lambda b, l=line: self.open_full_screen_lesson(l))
                 self.ids.lessons_container.add_widget(btn)
 
-    def start_lesson(self, lesson_title):
-        self.ids.learn_container.clear_widgets()
-        self.add_bubble(self.ids.learn_container, f"Урок: {lesson_title}", is_user=False)
+    # --- ПОЛНОЭКРАННЫЙ УРОК ---
+    def open_full_screen_lesson(self, lesson_title):
+        # Если урок уже сгенерирован, показываем его сразу
         if lesson_title in self.course_cache:
-            self.add_bubble(self.ids.learn_container, self.course_cache[lesson_title], is_user=False)
+            self.show_lesson_popup(lesson_title, self.course_cache[lesson_title])
             return
+
+        # Иначе создаем окно загрузки
+        content = BoxLayout(orientation='vertical', padding=dp(20))
+        content.add_widget(Label(text=f"Генерирую урок:\n{lesson_title}\n\nПожалуйста, подождите...", halign='center'))
+        popup = Popup(title="Загрузка", content=content, size_hint=(0.8, 0.4), auto_dismiss=False)
+        popup.open()
+
         def worker():
             try:
-                prompt = f"Объясни '{lesson_title}'. Без таблиц. Текст:\n{self.learning_context[:2000]}"
-                ans = safe_openrouter_request([{"role": "user", "content": prompt}])
+                # Увеличиваем лимит токенов (3000), чтобы текст не обрывался
+                prompt = f"Ты учитель. Подробно объясни тему '{lesson_title}' простым текстом. В конце задай 1 вопрос ученику. Текст конспекта:\n{self.learning_context[:2000]}"
+                ans = safe_openrouter_request([{"role": "user", "content": prompt}], max_tokens=3000)
+                
                 if ans and not ans.startswith("Ошибка") and not ans.startswith("Все ключи"): 
                     self.course_cache[lesson_title] = ans
-                self.update_learn(ans, None)
-            except: pass
+                
+                self.close_and_show_lesson(popup, lesson_title, ans)
+            except Exception as e:
+                self.close_and_show_lesson(popup, lesson_title, f"Ошибка: {e}")
+
         threading.Thread(target=worker, daemon=True).start()
+
+    @mainthread
+    def close_and_show_lesson(self, popup, lesson_title, text):
+        popup.dismiss()
+        self.show_lesson_popup(lesson_title, text)
+
+    def show_lesson_popup(self, lesson_title, text):
+        # Создаем окно на весь экран
+        content = BoxLayout(orientation='vertical', spacing=dp(10), padding=dp(10))
+        
+        # Прокручиваемый текст урока
+        scroll = ScrollView()
+        lbl = Label(text=text, size_hint_y=None, text_size=(Window.width - dp(40), None), halign='left', valign='top', color=(0,0,0,1))
+        lbl.bind(texture_size=lambda *x: setattr(lbl, 'height', lbl.texture_size[1]))
+        scroll.add_widget(lbl)
+        content.add_widget(scroll)
+        
+        # Кнопки внизу
+        btn_box = BoxLayout(size_hint_y=None, height=dp(50), spacing=dp(10))
+        
+        btn_copy = ModernButton(text="📋 Копировать", bg_color=(0.8, 0.85, 0.9, 1), color=(0,0,0,1))
+        btn_copy.bind(on_release=lambda x: Clipboard.copy(text))
+        
+        btn_close = ModernButton(text="Закрыть", bg_color=(0.85, 0.25, 0.25, 1))
+        
+        btn_box.add_widget(btn_copy)
+        btn_box.add_widget(btn_close)
+        content.add_widget(btn_box)
+        
+        # Открываем Popup
+        popup = Popup(title=lesson_title, content=content, size_hint=(1, 1), auto_dismiss=False)
+        btn_close.bind(on_release=lambda x: popup.dismiss())
+        popup.open()
 
     def send_learn_message(self):
         text = self.ids.learn_input.text.strip()
